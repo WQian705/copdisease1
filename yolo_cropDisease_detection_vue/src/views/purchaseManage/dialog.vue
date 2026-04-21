@@ -1,55 +1,64 @@
 <template>
-	<div class="system-role-dialog-container">
-		<el-dialog :title="state.dialog.title" v-model="state.dialog.isShowDialog" width="800px" class="dia">
-			<el-form ref="purchaseDialogFormRef" :model="state.form" :rules="state.rules" size="default" label-width="90px">
-				<el-row :gutter="35">
-					<el-col :xs="24" :sm="12" :md="12" :lg="12" :xl="12" class="mb20">
+	<div class="purchase-dialog">
+		<el-dialog :title="state.dialog.title" v-model="state.dialog.isShowDialog" width="780px" class="dialog-shell">
+			<div class="dialog-banner">
+				<div>
+					<span class="banner-tag">采购表单</span>
+					<h3>{{ state.dialog.title }}</h3>
+					<p>填写产品采购信息、供应商资料与联系人信息。</p>
+				</div>
+			</div>
+
+			<el-form ref="purchaseDialogFormRef" :model="state.form" :rules="state.rules" label-width="92px" class="dialog-form">
+				<el-row :gutter="20">
+					<el-col :xs="24" :sm="12" class="mb16">
 						<el-form-item label="产品名称" prop="productName">
 							<el-input v-model="state.form.productName" placeholder="请输入产品名称" clearable />
 						</el-form-item>
 					</el-col>
-					<el-col :xs="24" :sm="12" :md="12" :lg="12" :xl="12" class="mb20">
-						<el-form-item label="供货商" prop="supplier">
-							<el-input v-model="state.form.supplier" placeholder="请输入供货商" clearable />
+					<el-col :xs="24" :sm="12" class="mb16">
+						<el-form-item label="供应商" prop="supplier">
+							<el-input v-model="state.form.supplier" placeholder="请输入供应商" clearable />
 						</el-form-item>
 					</el-col>
-					<el-col :xs="24" :sm="12" :md="12" :lg="12" :xl="12" class="mb20">
+					<el-col :xs="24" :sm="12" class="mb16">
 						<el-form-item label="价格" prop="price">
 							<el-input-number v-model="state.form.price" :precision="2" :step="0.01" :min="0" style="width: 100%" />
 						</el-form-item>
 					</el-col>
-					<el-col :xs="24" :sm="12" :md="12" :lg="12" :xl="12" class="mb20">
+					<el-col :xs="24" :sm="12" class="mb16">
 						<el-form-item label="数量" prop="quantity">
 							<el-input-number v-model="state.form.quantity" :min="0" style="width: 100%" />
 						</el-form-item>
 					</el-col>
-					<el-col :xs="24" :sm="12" :md="12" :lg="12" :xl="12" class="mb20">
+					<el-col :xs="24" :sm="12" class="mb16">
 						<el-form-item label="地区" prop="region">
 							<el-input v-model="state.form.region" placeholder="请输入地区" clearable />
 						</el-form-item>
 					</el-col>
-					<el-col :xs="24" :sm="12" :md="12" :lg="12" :xl="12" class="mb20">
+					<el-col :xs="24" :sm="12" class="mb16">
 						<el-form-item label="电话" prop="phone">
 							<el-input v-model="state.form.phone" placeholder="请输入电话" clearable />
 						</el-form-item>
 					</el-col>
-					<el-col :xs="24" :sm="12" :md="12" :lg="12" :xl="12" class="mb20">
+					<el-col :xs="24" :sm="12" class="mb16">
 						<el-form-item label="采购人" prop="manager">
 							<el-input v-model="state.form.manager" placeholder="请输入采购人" clearable />
 						</el-form-item>
 					</el-col>
-					<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
+					<el-col :xs="24" class="mb16">
 						<el-form-item label="备注" prop="remark">
-							<el-input v-model="state.form.remark" type="textarea" :rows="3" placeholder="请输入备注" />
+							<el-input v-model="state.form.remark" type="textarea" :rows="4" placeholder="请输入备注信息" />
 						</el-form-item>
 					</el-col>
 				</el-row>
 			</el-form>
+
 			<template #footer>
-				<span class="dialog-footer">
-					<el-button @click="onCancel" size="default">取 消</el-button>
-					<el-button type="primary" @click="onSubmit" size="default">{{ state.dialog.submitTxt }}</el-button>
-				</span>
+				<div class="dialog-footer">
+					<el-button @click="onCancel">取消</el-button>
+					<el-button type="primary" class="submit-button" @click="onSubmit">{{ state.dialog.submitTxt }}</el-button>
+				</div>
 			</template>
 		</el-dialog>
 	</div>
@@ -61,10 +70,8 @@ import { ElMessage } from 'element-plus';
 import type { FormInstance } from 'element-plus';
 import request from '/@/utils/request';
 
-// 定义子组件向父组件传值/事件
 const emit = defineEmits(['refresh']);
 
-// 定义变量内容
 const purchaseDialogFormRef = ref<FormInstance>();
 const state = reactive({
 	form: {
@@ -76,19 +83,17 @@ const state = reactive({
 		region: '',
 		phone: '',
 		manager: '',
-		remark: ''
+		remark: '',
 	},
 	rules: {
 		productName: [{ required: true, message: '请输入产品名称', trigger: 'blur' }],
 		price: [{ required: true, message: '请输入价格', trigger: 'blur' }],
 		quantity: [{ required: true, message: '请输入数量', trigger: 'blur' }],
-		supplier: [{ required: true, message: '请输入供货商', trigger: 'blur' }],
+		supplier: [{ required: true, message: '请输入供应商', trigger: 'blur' }],
 		region: [{ required: true, message: '请输入地区', trigger: 'blur' }],
-		phone: [
-			{ required: true, message: '请输入电话', trigger: 'blur' },
-		],
+		phone: [{ required: true, message: '请输入电话', trigger: 'blur' }],
 		manager: [{ required: true, message: '请输入采购人', trigger: 'blur' }],
-		remark: [{ required: true, message: '请输入备注', trigger: 'blur' }]
+		remark: [{ required: true, message: '请输入备注信息', trigger: 'blur' }],
 	},
 	dialog: {
 		isShowDialog: false,
@@ -98,16 +103,14 @@ const state = reactive({
 	},
 });
 
-// 打开弹窗
 const openDialog = (type: string, row: any) => {
 	if (type === 'edit') {
 		state.form = { ...row };
 		state.dialog.title = '修改采购信息';
-		state.dialog.submitTxt = '修 改';
+		state.dialog.submitTxt = '保存修改';
 	} else {
 		state.dialog.title = '新增采购信息';
-		state.dialog.submitTxt = '新 增';
-		// 清空表单
+		state.dialog.submitTxt = '确认新增';
 		nextTick(() => {
 			state.form = {
 				id: null,
@@ -118,24 +121,21 @@ const openDialog = (type: string, row: any) => {
 				region: '',
 				phone: '',
 				manager: '',
-				remark: ''
+				remark: '',
 			};
 		});
 	}
 	state.dialog.isShowDialog = true;
 };
 
-// 关闭弹窗
 const closeDialog = () => {
 	state.dialog.isShowDialog = false;
 };
 
-// 取消
 const onCancel = () => {
 	closeDialog();
 };
 
-// 提交
 const onSubmit = () => {
 	if (!purchaseDialogFormRef.value) return;
 	purchaseDialogFormRef.value.validate((valid: boolean) => {
@@ -143,27 +143,21 @@ const onSubmit = () => {
 			if (state.dialog.title === '修改采购信息') {
 				request.post('/api/purchase/update', state.form).then((res) => {
 					if (res.code == 0) {
-						ElMessage.success('修改成功！');
+						ElMessage.success('修改成功');
 						setTimeout(() => {
 							closeDialog();
 							emit('refresh');
 						}, 500);
 					} else {
-						ElMessage({
-							type: 'error',
-							message: res.msg,
-						});
+						ElMessage.error(res.msg);
 					}
 				});
 			} else {
 				request.post('/api/purchase', state.form).then((res) => {
 					if (res.code == 0) {
-						ElMessage.success('添加成功！');
+						ElMessage.success('新增成功');
 					} else {
-						ElMessage({
-							type: 'error',
-							message: res.msg,
-						});
+						ElMessage.error(res.msg);
 					}
 					setTimeout(() => {
 						closeDialog();
@@ -177,32 +171,90 @@ const onSubmit = () => {
 	});
 };
 
-// 暴露变量
 defineExpose({
 	openDialog,
 });
 </script>
 
 <style scoped lang="scss">
-:deep(.dia) {
-	width: 800px;
-	height: auto;
-	min-height: 500px;
-	display: flex;
-	flex-direction: column;
+:deep(.dialog-shell .el-dialog) {
+	border-radius: 26px;
+	overflow: hidden;
+	background: linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%);
 }
 
-.el-form {
-	width: 90%;
-	margin: 0 auto;
-	padding: 20px 0;
+:deep(.dialog-shell .el-dialog__header) {
+	display: none;
+}
+
+:deep(.dialog-shell .el-dialog__body) {
+	padding: 0 0 18px;
+}
+
+:deep(.dialog-shell .el-dialog__footer) {
+	padding: 0 24px 24px;
+}
+
+.dialog-banner {
+	padding: 24px 24px 18px;
+	background: linear-gradient(135deg, #163744 0%, #2f6f56 55%, #347c8f 100%);
+	color: #fff;
+}
+
+.banner-tag {
+	display: inline-flex;
+	padding: 6px 12px;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.12);
+	font-size: 12px;
+	letter-spacing: 0.12em;
+}
+
+.dialog-banner h3 {
+	margin: 14px 0 8px;
+	font-size: 26px;
+}
+
+.dialog-banner p {
+	margin: 0;
+	color: rgba(255, 255, 255, 0.82);
+}
+
+.dialog-form {
+	padding: 22px 24px 0;
+}
+
+.mb16 {
+	margin-bottom: 16px;
+}
+
+.dialog-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+}
+
+.submit-button {
+	border: none;
+	border-radius: 14px;
+	background: linear-gradient(135deg, #1f6f58 0%, #2f8b70 55%, #2c79a5 100%);
+	box-shadow: 0 16px 28px rgba(39, 103, 91, 0.18);
 }
 
 :deep(.el-form-item__label) {
-	font-weight: 500;
+	color: #506273;
+	font-weight: 600;
+}
+
+:deep(.el-input__wrapper),
+:deep(.el-textarea__inner),
+:deep(.el-select .el-input__wrapper) {
+	border-radius: 14px;
+	background: #f5f8f6;
+	box-shadow: inset 0 0 0 1px rgba(106, 128, 115, 0.12) !important;
 }
 
 :deep(.el-input-number) {
 	width: 100%;
 }
-</style> 
+</style>
