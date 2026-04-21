@@ -1,76 +1,94 @@
 <template>
-	<div class="system-predict-container layout-padding">
-		<div class="system-predict-padding layout-padding-auto layout-padding-view">
-			<div class="header">
-				<div class="kind">
-					<text>作物种类：</text>
-					<el-input v-model="state.form.weight" style="width: 150px" size="large" disabled />
+	<div class="compare-page layout-padding">
+		<div class="compare-panel layout-padding-auto layout-padding-view">
+			<section class="compare-hero">
+				<div>
+					<span class="hero-badge">视频详情对比</span>
+					<h2>同屏查看原始视频与识别结果</h2>
+					<p>保留原有详情查询、播放控制与拖拽分栏功能，只提升信息展示层次和整体观感。</p>
 				</div>
-				<div class="model">
-					<text>使用权重：</text>
-					<el-input v-model="state.form.weight" style="width: 180px" size="large" disabled />
+				<div class="hero-side">
+					<span>识别用户</span>
+					<strong>{{ state.form.username || '未加载' }}</strong>
 				</div>
-				<div class="count">
-					<text>最小阈值：</text>
-					<el-input v-model="state.form.conf" style="width: 100px" size="large" disabled />
+			</section>
+
+			<section class="meta-card">
+				<div class="meta-grid">
+					<div class="meta-item">
+						<span>作物种类</span>
+						<strong>{{ state.form.kind || '--' }}</strong>
+					</div>
+					<div class="meta-item">
+						<span>识别模型</span>
+						<strong>{{ state.form.weight || '--' }}</strong>
+					</div>
+					<div class="meta-item">
+						<span>最小阈值</span>
+						<strong>{{ state.form.conf || '--' }}</strong>
+					</div>
+					<div class="meta-item">
+						<span>开始时间</span>
+						<strong>{{ state.form.startTime || '--' }}</strong>
+					</div>
 				</div>
-				<div class="username">
-					<text>用户：</text>
-					<el-input v-model="state.form.username" style="width: 150px" size="large" disabled />
+				<div class="action-row">
+					<el-button type="primary" class="play-button" @click="playVideos">开始播放</el-button>
+					<el-button type="info" plain class="pause-button" @click="pauseVideos">暂停播放</el-button>
 				</div>
-				<div class="startTime">
-					<text>开始时间：</text>
-					<el-input v-model="state.form.startTime" style="width: 200px" size="large" disabled />
-				</div>
-				<div class="button-section">
-					<el-button type="primary" @click="playVideos" class="predict-button">开始播放</el-button>
-				</div>
-				<div class="button-section">
-					<el-button type="success" @click="pauseVideos" class="predict-button">暂停播放</el-button>
-				</div>
-			</div>
-			<div class="cards" ref="cardsContainer">
-				<!-- 左侧区域的视频 -->
-				<div class="left" :style="{ width: leftWidth + '%' }">
-					<video class="video" v-if="state.form.inputVideo" preload="auto" controls>
-						<source :src="state.form.inputVideo" type="video/mp4" />
-					</video>
+			</section>
+
+			<section class="compare-card">
+				<div class="stage-header">
+					<div>
+						<h3>双画面对比</h3>
+						<p>拖动中间分隔条，可自由调整左右预览比例。</p>
+					</div>
+					<div class="view-labels">
+						<span>原始视频</span>
+						<span>识别结果</span>
+					</div>
 				</div>
 
-				<!-- 分割条 -->
-				<div class="splitter" @mousedown="startDrag"></div>
+				<div class="cards" ref="cardsContainer">
+					<div class="left stage-pane" :style="{ width: leftWidth + '%' }">
+						<video class="video" v-if="state.form.inputVideo" preload="auto" controls>
+							<source :src="state.form.inputVideo" type="video/mp4" />
+						</video>
+						<div v-else class="empty-pane">暂无原始视频</div>
+					</div>
 
-				<!-- 右侧区域的视频 -->
-				<div class="right" :style="{ width: 100 - leftWidth + '%' }">
-					<video class="video" preload="auto" v-if="state.form.outVideo" controls>
-						<source :src="state.form.outVideo" type="video/mp4" />
-					</video>
+					<div class="splitter" @mousedown="startDrag"></div>
+
+					<div class="right stage-pane" :style="{ width: 100 - leftWidth + '%' }">
+						<video class="video" v-if="state.form.outVideo" preload="auto" controls>
+							<source :src="state.form.outVideo" type="video/mp4" />
+						</video>
+						<div v-else class="empty-pane">暂无处理结果</div>
+					</div>
 				</div>
-			</div>
+			</section>
 		</div>
 	</div>
 </template>
 
-
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import request from '/@/utils/request';
 import { useRoute } from 'vue-router';
 
 const route = useRoute();
-const leftWidth = ref(50); // 左侧 div 初始宽度
+const leftWidth = ref(50);
 const state = reactive({
 	form: {} as any,
-	id: '' as any
+	id: '' as any,
 });
 
 const getData = () => {
 	request.get('/api/videoRecords/' + state.id).then((res) => {
 		if (res.code == 0) {
-			// res.data = JSON.parse(res.data);
 			state.form = res.data;
-			console.log(state.form);
 		} else {
 			ElMessage.error(res.msg);
 		}
@@ -78,36 +96,30 @@ const getData = () => {
 };
 
 const playVideos = () => {
-    const leftVideo = document.querySelector('.left .video') as HTMLVideoElement;
-    const rightVideo = document.querySelector('.right .video') as HTMLVideoElement;
+	const leftVideo = document.querySelector('.left .video') as HTMLVideoElement;
+	const rightVideo = document.querySelector('.right .video') as HTMLVideoElement;
 
-    if (leftVideo) leftVideo.play();
-    if (rightVideo) rightVideo.play();
+	if (leftVideo) leftVideo.play();
+	if (rightVideo) rightVideo.play();
 };
 
 const pauseVideos = () => {
-    const leftVideo = document.querySelector('.left .video') as HTMLVideoElement;
-    const rightVideo = document.querySelector('.right .video') as HTMLVideoElement;
+	const leftVideo = document.querySelector('.left .video') as HTMLVideoElement;
+	const rightVideo = document.querySelector('.right .video') as HTMLVideoElement;
 
-    if (leftVideo) leftVideo.pause();
-    if (rightVideo) rightVideo.pause();
+	if (leftVideo) leftVideo.pause();
+	if (rightVideo) rightVideo.pause();
 };
 
-
-// 拖动分割条
 const startDrag = (e: MouseEvent) => {
-	const cardsContainer = document.querySelector('.cards') as HTMLElement; // 获取父容器
+	const cardsContainer = document.querySelector('.cards') as HTMLElement;
 	const startX = e.clientX;
 	const startLeftWidth = leftWidth.value;
-
-	const cardsContainerLeft = cardsContainer.getBoundingClientRect().left; // 获取父容器的左边位置
-	const cardsContainerWidth = cardsContainer.offsetWidth; // 获取父容器的宽度
+	const cardsContainerWidth = cardsContainer.offsetWidth;
 
 	const onMouseMove = (moveEvent: MouseEvent) => {
 		const deltaX = moveEvent.clientX - startX;
 		let newLeftWidth = startLeftWidth + (deltaX / cardsContainerWidth) * 100;
-
-		// 限制左右区域的宽度范围为 0% 到 100%
 		newLeftWidth = Math.min(Math.max(newLeftWidth, 0), 100);
 		leftWidth.value = newLeftWidth;
 	};
@@ -121,112 +133,221 @@ const startDrag = (e: MouseEvent) => {
 	document.addEventListener('mouseup', onMouseUp);
 };
 
-
 onMounted(() => {
-	//获取链接参数
 	state.id = route.query.id;
-	console.log(state.id);
-	getData()
+	getData();
 });
 </script>
 
 <style scoped lang="scss">
-.system-predict-container {
-	width: 100%;
-	height: 100%;
-	display: flex;
-	flex-direction: column;
-	background-color: #f5f7fa; /* 浅灰色背景 */
-
-	.system-predict-padding {
-		padding: 20px;
-		width: 100%;
-		height: 100%;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); /* 轻微阴影 */
-		border-radius: 8px;
-		background: #fff; /* 白色背景 */
-
-		.el-table {
-			flex: 1;
-		}
+.compare-page {
+	.compare-panel {
+		padding: 18px;
+		background: rgba(255, 255, 255, 0.88);
 	}
 }
 
-.header {
-	width: 100%;
-	height: auto;
+.compare-hero {
 	display: flex;
-	justify-content: start;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 24px;
+	border-radius: 24px;
+	background: linear-gradient(135deg, #1a3444 0%, #1c6259 54%, #2b7a9d 100%);
+	color: #fff;
+}
+
+.hero-badge {
+	display: inline-flex;
+	padding: 7px 12px;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.12);
+	font-size: 12px;
+	letter-spacing: 0.12em;
+}
+
+.compare-hero h2 {
+	margin: 14px 0 8px;
+	font-size: 28px;
+}
+
+.compare-hero p {
+	color: rgba(255, 255, 255, 0.8);
+	line-height: 1.8;
+}
+
+.hero-side {
+	min-width: 150px;
+	padding: 18px;
+	border-radius: 20px;
+	background: rgba(255, 255, 255, 0.12);
+}
+
+.hero-side span {
+	color: rgba(255, 255, 255, 0.72);
+	font-size: 13px;
+}
+
+.hero-side strong {
+	display: block;
+	margin-top: 10px;
+	font-size: 26px;
+	word-break: break-word;
+}
+
+.meta-card,
+.compare-card {
+	margin-top: 16px;
+	padding: 18px;
+	border-radius: 22px;
+	background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%);
+	box-shadow: 0 18px 34px rgba(31, 52, 84, 0.06);
+}
+
+.meta-grid {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.meta-item {
+	padding: 16px 18px;
+	border-radius: 18px;
+	background: #f5f8f6;
+}
+
+.meta-item span {
+	display: block;
+	color: #738294;
+	font-size: 13px;
+}
+
+.meta-item strong {
+	display: block;
+	margin-top: 10px;
+	color: #23394b;
+	font-size: 18px;
+	word-break: break-word;
+}
+
+.action-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin-top: 16px;
+}
+
+.play-button,
+.pause-button {
+	height: 46px;
+	border: none;
+	border-radius: 16px;
+}
+
+.play-button {
+	background: linear-gradient(135deg, #1f6f58 0%, #2f8b70 55%, #2c79a5 100%);
+	box-shadow: 0 18px 32px rgba(39, 103, 91, 0.2);
+}
+
+.pause-button {
+	color: #355363;
+	background: rgba(116, 144, 159, 0.12);
+	box-shadow: inset 0 0 0 1px rgba(116, 144, 159, 0.16);
+}
+
+.stage-header {
+	display: flex;
+	justify-content: space-between;
 	align-items: center;
-	gap: 20px; /* 等距对齐 */
-	padding-bottom: 10px;
-	border-bottom: 2px solid #e0e0e0; /* 分割线 */
-	font-size: 14px;
+	gap: 16px;
+	margin-bottom: 18px;
+}
 
-	.model,
-	.height,
-	.username,
-	.startTime {
-		display: flex;
-		align-items: center;
+.stage-header h3 {
+	margin: 0 0 6px;
+	color: #24384d;
+}
 
-		text {
-			// font-weight: bold;
-			color: #333;
-			margin-right: 5px;
-		}
-	}
+.stage-header p {
+	margin: 0;
+	color: #7d8a98;
+}
+
+.view-labels {
+	display: flex;
+	gap: 12px;
+}
+
+.view-labels span {
+	padding: 8px 14px;
+	border-radius: 999px;
+	background: #f3f7f5;
+	color: #516273;
+	font-size: 13px;
 }
 
 .cards {
-	width: 100%;
-	height: calc(100% - 50px); /* 减去 header 高度 */
-	border-radius: 8px;
-	margin-top: 15px;
-	padding: 0px;
 	display: flex;
-	flex-direction: row;
+	min-height: 560px;
+	border-radius: 22px;
 	overflow: hidden;
-	background-color: #ffffff; /* 白色背景 */
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* 卡片阴影 */
+	background: #eef4f1;
 }
 
-.left,
-.right {
-	flex-grow: 1;
-	height: 100%;
-	position: relative;
+.stage-pane {
 	display: flex;
-	justify-content: center;
 	align-items: center;
-	background: radial-gradient(circle, #d3e3f1 0%, #ffffff 100%);
-	border-radius: 8px;
-	border: 1px solid #e0e0e0; /* 边框 */
-	box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05); /* 内部阴影 */
+	justify-content: center;
+	padding: 16px;
+	background: radial-gradient(circle at top, #f7fbf9 0%, #edf4f1 100%);
 }
 
 .video {
 	width: 100%;
 	max-height: 100%;
-	height: auto;
+	border-radius: 18px;
 	object-fit: contain;
-	border-radius: 8px; /* 圆角视频 */
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); /* 视频阴影 */
+	background: #0f1720;
+	box-shadow: 0 20px 36px rgba(15, 23, 32, 0.14);
 }
 
-/* 分割条样式 */
-.splitter {
-	cursor: ew-resize;
-	width: 3px; /* 加宽分割条 */
-	background: linear-gradient(to bottom, #d3e3f1, #a7bdd8);
-	border-left: none;
-	height: 100%;
-	transition: all 0.3s ease;
+.empty-pane {
+	color: #7c8a97;
+}
 
-	&:hover {
-		background: linear-gradient(to bottom, #a7bdd8, #d3e3f1);
-		box-shadow: 0 0 8px rgba(0, 0, 0, 0.2); /* 高亮效果 */
+.splitter {
+	width: 6px;
+	cursor: ew-resize;
+	background: linear-gradient(180deg, #c8d7e1 0%, #7ca2b7 50%, #c8d7e1 100%);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+@media (max-width: 1100px) {
+	.compare-hero,
+	.stage-header {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.meta-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 }
 
+@media (max-width: 768px) {
+	.meta-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.cards {
+		flex-direction: column;
+		min-height: auto;
+	}
+
+	.splitter {
+		width: 100%;
+		height: 6px;
+		cursor: ns-resize;
+	}
+}
 </style>
