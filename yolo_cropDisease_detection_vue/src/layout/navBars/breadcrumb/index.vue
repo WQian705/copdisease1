@@ -98,10 +98,13 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 .layout-navbars-breadcrumb-index {
-	height: 50px;
+	height: 72px;
 	display: flex;
 	align-items: center;
-	background: var(--next-bg-topBar);
-	border-bottom: 1px solid var(--next-border-color-light);
+	padding: 0 18px 0 0;
+	background: rgba(255, 255, 255, 0.78);
+	border-bottom: 1px solid rgba(222, 231, 225, 0.9);
+	backdrop-filter: blur(12px);
+	box-shadow: 0 10px 24px rgba(31, 52, 84, 0.04);
 }
 </style>

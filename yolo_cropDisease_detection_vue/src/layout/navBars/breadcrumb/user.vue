@@ -1,5 +1,5 @@
 <template>
-	<div class="layout-navbars-breadcrumb-user pr15" :style="{ flex: layoutUserFlexNum }">
+	<div class="layout-navbars-breadcrumb-user" :style="{ flex: layoutUserFlexNum }">
 		<el-dropdown :show-timeout="70" :hide-timeout="50" trigger="click" @command="onComponentSizeChange" class="custom-dropdown">
 			<div class="layout-navbars-breadcrumb-user-icon">
 				<i class="iconfont icon-ziti" :title="$t('message.user.title0')"></i>
@@ -20,21 +20,7 @@
 		<div class="layout-navbars-breadcrumb-user-icon" @click="onLayoutSetingClick">
 			<i class="icon-skin iconfont" :title="$t('message.user.title3')"></i>
 		</div>
-		<!-- <div class="layout-navbars-breadcrumb-user-icon">
-			<el-popover placement="bottom" trigger="click" transition="el-zoom-in-top" :width="300" :persistent="false">
-				<template #reference>
-					<el-badge :is-dot="true">
-						<el-icon :title="$t('message.user.title4')">
-							<ele-Bell />
-						</el-icon>
-					</el-badge>
-				</template>
-				<template #default>
-					<UserNews />
-				</template>
-			</el-popover>
-		</div> -->
-		<div class="layout-navbars-breadcrumb-user-icon mr10" @click="onScreenfullClick">
+		<div class="layout-navbars-breadcrumb-user-icon" @click="onScreenfullClick">
 			<i
 				class="iconfont"
 				:title="state.isScreenfull ? $t('message.user.title6') : $t('message.user.title5')"
@@ -43,8 +29,8 @@
 		</div>
 		<el-dropdown :show-timeout="70" :hide-timeout="50" @command="onHandleCommandClick" class="custom-dropdown">
 			<span class="layout-navbars-breadcrumb-user-link">
-				<img :src="state.img" class="layout-navbars-breadcrumb-user-link-photo mr5" />
-				{{ username }}
+				<img :src="state.img || fallbackAvatar" class="layout-navbars-breadcrumb-user-link-photo" />
+				<span class="layout-navbars-breadcrumb-user-link-name">{{ username }}</span>
 				<el-icon class="el-icon--right">
 					<ele-ArrowDown />
 				</el-icon>
@@ -71,14 +57,12 @@ import { useThemeConfig } from '/@/stores/themeConfig';
 import other from '/@/utils/other';
 import request from '/@/utils/request';
 import { Session, Local } from '/@/utils/storage';
-import Cookies from 'js-cookie';
 import screenfull from 'screenfull';
 import mittBus from '/@/utils/mitt';
-// 引入组件
-// const UserNews = defineAsyncComponent(() => import('/@/layout/navBars/breadcrumb/userNews.vue'));
+import fallbackAvatar from '/@/assets/logo.png';
+
 const Search = defineAsyncComponent(() => import('/@/layout/navBars/breadcrumb/search.vue'));
 
-// 定义变量内容
 const { locale, t } = useI18n();
 const router = useRouter();
 const stores = useUserInfo();
@@ -93,9 +77,8 @@ const state = reactive({
 	disabledSize: 'large',
 });
 
-let username: string = '';
+const username = computed(() => userInfos.value.userName || '未登录用户');
 
-// 设置分割样式
 const layoutUserFlexNum = computed(() => {
 	let num: string | number = '';
 	const { layout, isClassicSplitMenu } = themeConfig.value;
@@ -104,11 +87,11 @@ const layoutUserFlexNum = computed(() => {
 	else num = '';
 	return num;
 });
-// 布局配置 icon 点击时
+
 const onLayoutSetingClick = () => {
 	mittBus.emit('openSetingsDrawer');
 };
-// 下拉菜单点击时
+
 const onHandleCommandClick = (path: string) => {
 	if (path === 'logOut') {
 		ElMessageBox({
@@ -136,9 +119,7 @@ const onHandleCommandClick = (path: string) => {
 			},
 		})
 			.then(async () => {
-				// 清除缓存/token等
 				Session.clear();
-				// 使用 reload 时，不需要调用 resetRoute() 重置路由
 				window.location.reload();
 			})
 			.catch(() => {});
@@ -146,11 +127,11 @@ const onHandleCommandClick = (path: string) => {
 		router.push(path);
 	}
 };
-// 菜单搜索点击
+
 const onSearchClick = () => {
 	searchRef.value.openSearch();
 };
-// 组件大小改变
+
 const onComponentSizeChange = (size: string) => {
 	Local.remove('themeConfig');
 	themeConfig.value.globalComponentSize = size;
@@ -158,19 +139,18 @@ const onComponentSizeChange = (size: string) => {
 	initI18nOrSize('globalComponentSize', 'disabledSize');
 	window.location.reload();
 };
-// 全屏点击时
+
 const onScreenfullClick = () => {
 	if (!screenfull.isEnabled) {
-		ElMessage.warning('暂不不支持全屏');
+		ElMessage.warning('暂不支持全屏');
 		return false;
 	}
 	screenfull.toggle();
 	screenfull.on('change', () => {
-		if (screenfull.isFullscreen) state.isScreenfull = true;
-		else state.isScreenfull = false;
+		state.isScreenfull = !!screenfull.isFullscreen;
 	});
 };
-// 语言切换
+
 const onLanguageChange = (lang: string) => {
 	Local.remove('themeConfig');
 	themeConfig.value.globalI18n = lang;
@@ -179,13 +159,13 @@ const onLanguageChange = (lang: string) => {
 	other.useTitle();
 	initI18nOrSize('globalI18n', 'disabledI18n');
 };
-// 初始化组件大小/i18n
+
 const initI18nOrSize = (value: string, attr: string) => {
 	state[attr] = Local.get('themeConfig')[value];
 };
+
 const getTableData = () => {
 	request.get('/api/user/' + userInfos.value.userName).then((res) => {
-		// console.log(res);
 		if (res.code == 0) {
 			state.img = res.data.avatar;
 		} else {
@@ -196,10 +176,8 @@ const getTableData = () => {
 		}
 	});
 };
-// 页面加载时
+
 onMounted(() => {
-	// console.log(userInfos.value);
-	username = userInfos.value.userName
 	getTableData();
 	if (Local.get('themeConfig')) {
 		initI18nOrSize('globalComponentSize', 'disabledSize');
@@ -209,87 +187,75 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.tile {
-	width: 100%;
-	height: 100%;
-	color: black;
-	font-size: 20px;
-	font-weight: 600;
-	margin-left: -150px;
-	display: flex;
-	justify-content: flex-start;
-	align-items: center;
-	text-align: center;
-}
 .layout-navbars-breadcrumb-user {
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
+	gap: 8px;
+
 	&-link {
-		height: 100%;
+		height: 48px;
 		display: flex;
 		align-items: center;
+		padding: 0 16px 0 8px;
+		border-radius: 16px;
+		background: linear-gradient(135deg, #f7faf8 0%, #edf4fb 100%);
+		box-shadow: inset 0 0 0 1px rgba(211, 221, 215, 0.9);
+		color: #31485f;
+		font-weight: 600;
 		white-space: nowrap;
+
 		&-photo {
-			width: 40px;
-			height: 40px;
+			width: 36px;
+			height: 36px;
 			border-radius: 100%;
-			margin-right: 15px;
+			margin-right: 10px;
+			object-fit: cover;
+			box-shadow: 0 8px 16px rgba(30, 70, 55, 0.12);
+		}
+
+		&-name {
+			max-width: 96px;
+			overflow: hidden;
+			text-overflow: ellipsis;
 		}
 	}
+
 	&-icon {
-		padding: 0 10px;
 		cursor: pointer;
-		color: #000000 !important;
-		height: 50px;
-		line-height: 50px;
+		color: #3a5569 !important;
+		height: 44px;
+		width: 44px;
+		border-radius: 14px;
+		background: linear-gradient(135deg, #f5faf6 0%, #edf4fb 100%);
+		box-shadow: inset 0 0 0 1px rgba(212, 222, 216, 0.9);
 		display: flex;
 		align-items: center;
+		justify-content: center;
+		transition: background 0.2s ease, transform 0.2s ease, color 0.2s ease;
+
 		&:hover {
-			background: #f0f0f0 !important;
-			i {
-				display: inline-block;
-			}
+			background: linear-gradient(135deg, rgba(42, 123, 97, 0.12), rgba(43, 121, 165, 0.12)) !important;
+			color: #1e7259 !important;
+			transform: translateY(-1px);
 		}
+
 		i {
 			font-size: 16px;
 		}
 	}
+
 	:deep(.el-dropdown) {
-		color: var(--next-bg-topBarColor);
-	}
-	:deep(.el-badge) {
-		height: 40px;
-		line-height: 40px;
-		display: flex;
-		align-items: center;
-	}
-	:deep(.el-badge__content.is-fixed) {
-		top: 12px;
+		color: #31485f;
 	}
 }
+
 .custom-dropdown {
-	/* 自定义 el-dropdown 的样式 */
-	.el-dropdown-link {
-		color: #fff; /* 修改字体颜色 */
-		background-color: #409eff; /* 修改背景色 */
-		padding: 10px 20px;
-		border-radius: 4px;
-		transition: background-color 0.3s, box-shadow 0.3s;
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-		cursor: pointer;
-	}
-
-	.el-dropdown-link:hover {
-		background-color: #66b1ff; /* 悬停时的背景色 */
-		box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-	}
-
 	.el-dropdown-menu {
 		background-color: #ffffff;
-		border: 1px solid #dcdcdc;
-		border-radius: 10px;
-		box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+		border: 1px solid #dfe7e2;
+		border-radius: 14px;
+		box-shadow: 0 18px 30px rgba(31, 52, 84, 0.12);
 		overflow: hidden;
 		padding: 5px;
 	}
@@ -297,21 +263,14 @@ onMounted(() => {
 	.el-dropdown-item {
 		color: #000000 !important;
 		padding: 12px 20px;
-		transition: background-color 0.3s, color 0.3s;
+		transition: background-color 0.3s ease;
 		display: flex;
 		align-items: center;
 		justify-content: center;
+
 		&:hover {
-			background-color: #f0f0f0 !important;
+			background-color: #f3f8f5 !important;
 		}
-	}
-
-	.el-dropdown-item i {
-		margin-right: 8px;
-	}
-
-	.el-dropdown-item:active {
-		background-color: #e6f7ff;
 	}
 }
 </style>
