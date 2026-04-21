@@ -1,7 +1,7 @@
 <template>
 	<div class="system-role-dialog-container">
-		<el-dialog :title="state.dialog.title" v-model="state.dialog.isShowDialog" width="900px" class="dia">
-			<el-form ref="diseaseDialogFormRef" :model="state.form" size="default" label-width="90px">
+		<el-dialog :title="state.dialog.title" v-model="state.dialog.isShowDialog" width="920px" class="disease-dialog">
+			<el-form ref="diseaseDialogFormRef" :model="state.form" size="default" label-width="92px" class="dialog-form">
 				<el-row :gutter="20">
 					<el-col :span="12" class="mb20">
 						<el-form-item label="作物类型">
@@ -17,17 +17,17 @@
 					</el-col>
 					<el-col :span="24" class="mb20">
 						<el-form-item label="病害症状">
-							<el-input type="textarea" v-model="state.form.symptoms" placeholder="请输入病害症状" :rows="6" />
+							<el-input type="textarea" v-model="state.form.symptoms" placeholder="请输入病害症状" :rows="5" />
 						</el-form-item>
 					</el-col>
 					<el-col :span="24" class="mb20">
 						<el-form-item label="发病原因">
-							<el-input type="textarea" v-model="state.form.causes" placeholder="请输入发病原因" :rows="3" />
+							<el-input type="textarea" v-model="state.form.causes" placeholder="请输入发病原因" :rows="4" />
 						</el-form-item>
 					</el-col>
 					<el-col :span="24" class="mb20">
 						<el-form-item label="防治方法">
-							<el-input type="textarea" v-model="state.form.prevention" placeholder="请输入防治方法" :rows="6" />
+							<el-input type="textarea" v-model="state.form.prevention" placeholder="请输入防治方法" :rows="5" />
 						</el-form-item>
 					</el-col>
 					<el-col :span="24" class="mb20">
@@ -39,8 +39,11 @@
 								:show-file-list="false"
 								:on-success="handleAvatarSuccess"
 							>
-								<img v-if="imageUrl" :src="imageUrl" class="avatar">
-								<el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
+								<img v-if="imageUrl" :src="imageUrl" class="avatar" />
+								<div v-else class="upload-empty">
+									<el-icon class="avatar-uploader-icon"><Plus /></el-icon>
+									<span>点击上传图片</span>
+								</div>
 							</el-upload>
 						</el-form-item>
 					</el-col>
@@ -48,7 +51,7 @@
 			</el-form>
 			<template #footer>
 				<span class="dialog-footer">
-					<el-button @click="onCancel" size="default">取 消</el-button>
+					<el-button @click="onCancel" size="default">取消</el-button>
 					<el-button type="primary" @click="onSubmit" size="default">{{ state.dialog.submitTxt }}</el-button>
 				</span>
 			</template>
@@ -63,13 +66,11 @@ import { ElMessage } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import request from '/@/utils/request';
 
-// 定义子组件向父组件传值/事件
 const emit = defineEmits(['refresh']);
 
 const imageUrl = ref('');
 const uploadFile = ref<UploadInstance>();
 
-// 定义作物类型数据
 const cropTypes = [
 	{ value: '玉米', label: '玉米' },
 	{ value: '小麦', label: '小麦' },
@@ -79,10 +80,9 @@ const cropTypes = [
 	{ value: '苹果', label: '苹果' },
 	{ value: '葡萄', label: '葡萄' },
 	{ value: '番茄', label: '番茄' },
-	{ value: '草莓', label: '草莓' }
+	{ value: '草莓', label: '草莓' },
 ];
 
-// 定义变量内容
 const diseaseDialogFormRef = ref();
 const state = reactive({
 	form: {
@@ -92,7 +92,7 @@ const state = reactive({
 		symptoms: '',
 		causes: '',
 		prevention: '',
-		images: ''
+		images: '',
 	},
 	dialog: {
 		isShowDialog: false,
@@ -102,17 +102,15 @@ const state = reactive({
 	},
 });
 
-// 打开弹窗
 const openDialog = (type: string, row: any) => {
 	if (type === 'edit') {
 		state.form = { ...row };
 		state.dialog.title = '修改病害信息';
-		state.dialog.submitTxt = '修 改';
+		state.dialog.submitTxt = '保存修改';
 		imageUrl.value = state.form.images;
 	} else {
 		state.dialog.title = '新增病害信息';
-		state.dialog.submitTxt = '新 增';
-		// 清空表单
+		state.dialog.submitTxt = '确认新增';
 		nextTick(() => {
 			uploadFile.value!.clearFiles();
 			imageUrl.value = '';
@@ -123,127 +121,121 @@ const openDialog = (type: string, row: any) => {
 				symptoms: '',
 				causes: '',
 				prevention: '',
-				images: ''
+				images: '',
 			};
 		});
 	}
 	state.dialog.isShowDialog = true;
 };
 
-// 关闭弹窗
 const closeDialog = () => {
 	state.dialog.isShowDialog = false;
 };
 
-// 取消
 const onCancel = () => {
 	closeDialog();
 };
 
-// 提交
 const onSubmit = () => {
 	if (state.dialog.title === '修改病害信息') {
-		request.put('/api/disease', state.form).then((res) => {
-			if (res.code == 0) {
-				ElMessage.success('修改成功！');
+		request
+			.put('/api/disease', state.form)
+			.then((res) => {
+				if (res.code == 0) {
+					ElMessage.success('修改成功');
+					setTimeout(() => {
+						closeDialog();
+						emit('refresh');
+					}, 500);
+				} else {
+					ElMessage({ type: 'error', message: res.msg });
+				}
+			})
+			.catch((error) => {
+				ElMessage({ type: 'error', message: '修改失败：' + error.message });
+			});
+	} else {
+		request
+			.post('/api/disease', state.form)
+			.then((res) => {
+				if (res.code == 0) {
+					ElMessage.success('添加成功');
+				} else {
+					ElMessage({ type: 'error', message: res.msg });
+				}
 				setTimeout(() => {
 					closeDialog();
 					emit('refresh');
 				}, 500);
-			} else {
-				ElMessage({
-					type: 'error',
-					message: res.msg,
-				});
-			}
-		}).catch(error => {
-			ElMessage({
-				type: 'error',
-				message: '修改失败：' + error.message,
+			})
+			.catch((error) => {
+				ElMessage({ type: 'error', message: '添加失败：' + error.message });
 			});
-		});
-	} else {
-		request.post('/api/disease', state.form).then((res) => {
-			if (res.code == 0) {
-				ElMessage.success('添加成功！');
-			} else {
-				ElMessage({
-					type: 'error',
-					message: res.msg,
-				});
-			}
-			setTimeout(() => {
-				closeDialog();
-				emit('refresh');
-			}, 500);
-		}).catch(error => {
-			ElMessage({
-				type: 'error',
-				message: '添加失败：' + error.message,
-			});
-		});
 	}
 };
 
-// 图片上传成功
 const handleAvatarSuccess: UploadProps['onSuccess'] = (response, uploadFile) => {
 	imageUrl.value = URL.createObjectURL(uploadFile.raw!);
 	state.form.images = response.data;
 };
 
-// 暴露变量
 defineExpose({
 	openDialog,
 });
 </script>
 
 <style scoped lang="scss">
-:deep(.dia) {
-	.el-dialog {
-		margin-top: 8vh !important;
-		.el-dialog__body {
-			padding: 20px;
-		}
-		.el-dialog__header {
-			padding: 20px;
-			margin-right: 0;
-			border-bottom: 1px solid var(--el-border-color-light);
-		}
-		.el-dialog__footer {
-			padding: 20px;
-			border-top: 1px solid var(--el-border-color-light);
-		}
-	}
+:deep(.disease-dialog .el-dialog) {
+	margin-top: 7vh !important;
+	border-radius: 26px;
+	overflow: hidden;
+}
+
+:deep(.disease-dialog .el-dialog__header) {
+	padding: 22px 24px;
+	border-bottom: 1px solid #e3ebe6;
+	background: linear-gradient(180deg, #fbfdfc 0%, #f5f9f7 100%);
+}
+
+:deep(.disease-dialog .el-dialog__body) {
+	padding: 22px 24px 12px;
+}
+
+:deep(.disease-dialog .el-dialog__footer) {
+	padding: 18px 24px 22px;
+	border-top: 1px solid #e3ebe6;
 }
 
 .avatar-uploader {
 	:deep(.el-upload) {
-		border: 1px dashed var(--el-border-color);
-		border-radius: 6px;
-		cursor: pointer;
-		position: relative;
-		overflow: hidden;
-		transition: var(--el-transition-duration-fast);
-		width: 200px;
-		height: 200px;
+		width: 220px;
+		height: 220px;
+		border-radius: 20px;
+		border: 1px dashed #cfd9d2;
+		background: #f6faf7;
 		display: flex;
-		justify-content: center;
 		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+		transition: border-color 0.2s ease, transform 0.2s ease;
 
 		&:hover {
-			border-color: var(--el-color-primary);
+			border-color: #2c79a5;
+			transform: translateY(-1px);
 		}
 	}
 }
 
-.avatar-uploader-icon {
-	font-size: 28px;
-	color: #8c939d;
-	width: 100%;
-	height: 100%;
+.upload-empty {
 	display: flex;
-	justify-content: center;
+	flex-direction: column;
 	align-items: center;
+	gap: 10px;
+	color: #7e8d9c;
+}
+
+.avatar-uploader-icon {
+	font-size: 30px;
 }
 
 .avatar {
@@ -254,18 +246,25 @@ defineExpose({
 }
 
 .mb20 {
-	margin-bottom: 15px;
+	margin-bottom: 16px;
 }
 
-:deep(.el-form-item__label) {
-	font-weight: 500;
+:deep(.dialog-form .el-form-item__label) {
+	font-weight: 600;
+	color: #34495d;
 }
 
-:deep(.el-input__wrapper),
-:deep(.el-textarea__inner) {
-	box-shadow: 0 0 0 1px #dcdfe6 inset;
-	&:hover {
-		box-shadow: 0 0 0 1px var(--el-color-primary) inset;
-	}
+:deep(.dialog-form .el-input__wrapper),
+:deep(.dialog-form .el-select .el-input__wrapper),
+:deep(.dialog-form .el-textarea__inner) {
+	border-radius: 14px;
+	background: #f5f8f6;
+	box-shadow: inset 0 0 0 1px rgba(106, 128, 115, 0.12) !important;
 }
-</style> 
+
+.dialog-footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 10px;
+}
+</style>
