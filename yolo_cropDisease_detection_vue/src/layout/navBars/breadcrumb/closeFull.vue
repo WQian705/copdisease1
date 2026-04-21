@@ -10,11 +10,9 @@
 import { storeToRefs } from 'pinia';
 import { useTagsViewRoutes } from '/@/stores/tagsViewRoutes';
 
-// 定义变量内容
 const stores = useTagsViewRoutes();
 const { isTagsViewCurrenFull } = storeToRefs(stores);
 
-// 关闭当前全屏
 const onCloseFullscreen = () => {
 	stores.setCurrenFullscreen(false);
 };
@@ -24,29 +22,38 @@ const onCloseFullscreen = () => {
 .layout-navbars-close-full {
 	position: fixed;
 	z-index: 9999999999;
-	right: -30px;
-	top: -30px;
+	right: 26px;
+	top: 26px;
+
 	.layout-navbars-close-full-icon {
-		width: 60px;
-		height: 60px;
-		border-radius: 100%;
+		width: 52px;
+		height: 52px;
+		border-radius: 18px;
 		cursor: pointer;
-		background: rgba(0, 0, 0, 0.1);
-		transition: all 0.3s ease;
-		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(255, 255, 255, 0.82);
+		backdrop-filter: blur(10px);
+		box-shadow: 0 18px 30px rgba(27, 45, 72, 0.12);
+		transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+
 		:deep(i) {
-			position: absolute;
-			left: 10px;
-			top: 35px;
-			color: #333333;
-			transition: all 0.3s ease;
+			color: #294255;
+			font-size: 20px;
+			transition: color 0.2s ease;
 		}
 	}
+
 	&:hover {
-		transition: all 0.3s ease;
+		.layout-navbars-close-full-icon {
+			transform: translateY(-2px);
+			background: rgba(255, 255, 255, 0.95);
+			box-shadow: 0 22px 36px rgba(27, 45, 72, 0.16);
+		}
+
 		:deep(i) {
-			color: var(--el-color-primary);
-			transition: all 0.3s ease;
+			color: #1f6f58;
 		}
 	}
 }

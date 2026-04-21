@@ -1,27 +1,35 @@
 <template>
 	<div class="layout-search-dialog">
-		<el-dialog v-model="state.isShowSearch" destroy-on-close :show-close="false">
+		<el-dialog v-model="state.isShowSearch" destroy-on-close :show-close="false" class="search-dialog-shell">
 			<template #footer>
-				<el-autocomplete
-					v-model="state.menuQuery"
-					:fetch-suggestions="menuSearch"
-					:placeholder="$t('message.user.searchPlaceholder')"
-					ref="layoutMenuAutocompleteRef"
-					@select="onHandleSelect"
-					:fit-input-width="true"
-				>
-					<template #prefix>
-						<el-icon class="el-input__icon">
-							<ele-Search />
-						</el-icon>
-					</template>
-					<template #default="{ item }">
+				<div class="search-panel">
+					<div class="search-head">
 						<div>
-							<SvgIcon :name="item.meta.icon" class="mr5" />
-							{{ $t(item.meta.title) }}
+							<span class="search-tag">全局搜索</span>
+							<h3>快速定位菜单与页面</h3>
 						</div>
-					</template>
-				</el-autocomplete>
+					</div>
+					<el-autocomplete
+						v-model="state.menuQuery"
+						:fetch-suggestions="menuSearch"
+						:placeholder="$t('message.user.searchPlaceholder')"
+						ref="layoutMenuAutocompleteRef"
+						@select="onHandleSelect"
+						:fit-input-width="true"
+					>
+						<template #prefix>
+							<el-icon class="el-input__icon">
+								<ele-Search />
+							</el-icon>
+						</template>
+						<template #default="{ item }">
+							<div class="search-result-item">
+								<SvgIcon :name="item.meta.icon" class="mr5" />
+								{{ $t(item.meta.title) }}
+							</div>
+						</template>
+					</el-autocomplete>
+				</div>
 			</template>
 		</el-dialog>
 	</div>
@@ -34,7 +42,6 @@ import { useI18n } from 'vue-i18n';
 import { storeToRefs } from 'pinia';
 import { useTagsViewRoutes } from '/@/stores/tagsViewRoutes';
 
-// 定义变量内容
 const storesTagsViewRoutes = useTagsViewRoutes();
 const { tagsViewRoutes } = storeToRefs(storesTagsViewRoutes);
 const layoutMenuAutocompleteRef = ref();
@@ -46,7 +53,6 @@ const state = reactive<SearchState>({
 	tagsViewList: [],
 });
 
-// 搜索弹窗打开
 const openSearch = () => {
 	state.menuQuery = '';
 	state.isShowSearch = true;
@@ -57,16 +63,16 @@ const openSearch = () => {
 		});
 	});
 };
-// 搜索弹窗关闭
+
 const closeSearch = () => {
 	state.isShowSearch = false;
 };
-// 菜单搜索数据过滤
+
 const menuSearch = (queryString: string, cb: Function) => {
 	let results = queryString ? state.tagsViewList.filter(createFilter(queryString)) : state.tagsViewList;
 	cb(results);
 };
-// 菜单搜索过滤
+
 const createFilter = (queryString: string) => {
 	return (restaurant: RouteItem) => {
 		return (
@@ -76,14 +82,14 @@ const createFilter = (queryString: string) => {
 		);
 	};
 };
-// 初始化菜单数据
+
 const initTageView = () => {
 	if (state.tagsViewList.length > 0) return false;
 	tagsViewRoutes.value.map((v: RouteItem) => {
 		if (!v.meta?.isHide) state.tagsViewList.push({ ...v });
 	});
 };
-// 当前菜单选中时
+
 const onHandleSelect = (item: RouteItem) => {
 	let { path, redirect } = item;
 	if (item.meta?.isLink && !item.meta?.isIframe) window.open(item.meta?.isLink);
@@ -92,7 +98,6 @@ const onHandleSelect = (item: RouteItem) => {
 	closeSearch();
 };
 
-// 暴露变量
 defineExpose({
 	openSearch,
 });
@@ -101,24 +106,65 @@ defineExpose({
 <style scoped lang="scss">
 .layout-search-dialog {
 	position: relative;
-	:deep(.el-dialog) {
-		.el-dialog__header,
-		.el-dialog__body {
-			display: none;
-		}
-		.el-dialog__footer {
-			position: absolute;
-			left: 50%;
-			transform: translateX(-50%);
-			top: -53vh;
-		}
-	}
-	:deep(.el-autocomplete) {
-		width: 560px;
-		position: absolute;
-		top: 150px;
-		left: 50%;
-		transform: translateX(-50%);
-	}
+}
+
+:deep(.search-dialog-shell .el-dialog) {
+	width: min(720px, calc(100vw - 32px));
+	margin-top: 12vh;
+	border-radius: 28px;
+	overflow: hidden;
+	background: linear-gradient(180deg, #ffffff 0%, #f7faf8 100%);
+	box-shadow: 0 24px 56px rgba(27, 45, 72, 0.12);
+}
+
+:deep(.search-dialog-shell .el-dialog__header),
+:deep(.search-dialog-shell .el-dialog__body) {
+	display: none;
+}
+
+:deep(.search-dialog-shell .el-dialog__footer) {
+	padding: 0;
+}
+
+.search-panel {
+	padding: 22px;
+}
+
+.search-head {
+	margin-bottom: 16px;
+}
+
+.search-tag {
+	display: inline-flex;
+	padding: 6px 12px;
+	border-radius: 999px;
+	background: rgba(31, 111, 88, 0.08);
+	color: #1f6f58;
+	font-size: 12px;
+	letter-spacing: 0.12em;
+}
+
+.search-head h3 {
+	margin: 14px 0 0;
+	color: #24384d;
+	font-size: 24px;
+}
+
+:deep(.el-autocomplete) {
+	width: 100%;
+}
+
+:deep(.el-autocomplete .el-input__wrapper) {
+	border-radius: 18px;
+	min-height: 56px;
+	background: #f5f8f6;
+	box-shadow: inset 0 0 0 1px rgba(106, 128, 115, 0.12) !important;
+}
+
+.search-result-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: #355063;
 }
 </style>
