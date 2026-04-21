@@ -100,3 +100,60 @@ watch(
 	}
 );
 </script>
+
+<style scoped lang="scss">
+:deep(.el-menu) {
+	border-right: none;
+	padding: 14px 10px 18px;
+}
+
+:deep(.el-menu-item),
+:deep(.el-sub-menu__title) {
+	height: 46px;
+	margin-bottom: 6px;
+	border-radius: 14px;
+	color: #4a5c6f;
+	font-weight: 600;
+	transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+:deep(.el-menu-item:hover),
+:deep(.el-sub-menu__title:hover) {
+	background: linear-gradient(135deg, rgba(42, 123, 97, 0.1), rgba(53, 132, 185, 0.1));
+	color: #1c644f;
+	transform: translateX(2px);
+}
+
+:deep(.el-menu-item.is-active) {
+	background: linear-gradient(135deg, #1f6d57 0%, #2c7a67 50%, #2b6d96 100%);
+	color: #fff;
+	box-shadow: 0 10px 18px rgba(39, 103, 91, 0.2);
+}
+
+:deep(.el-menu-item.is-active .svg-icon),
+:deep(.el-menu-item.is-active span),
+:deep(.el-menu-item.is-active a) {
+	color: #fff !important;
+}
+
+:deep(.el-sub-menu.is-active > .el-sub-menu__title) {
+	color: #1d6c56;
+	background: rgba(42, 123, 97, 0.08);
+}
+
+:deep(.el-sub-menu .el-menu) {
+	background: transparent;
+	padding-top: 4px;
+}
+
+:deep(.svg-icon) {
+	margin-right: 10px;
+	font-size: 16px;
+	color: inherit;
+}
+
+:deep(.el-menu-item a) {
+	color: inherit;
+	text-decoration: none;
+}
+</style>

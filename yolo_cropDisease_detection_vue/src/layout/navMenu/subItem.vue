@@ -47,3 +47,26 @@ const onALinkClick = (val: RouteItem) => {
 	other.handleOpenLink(val);
 };
 </script>
+
+<style scoped lang="scss">
+:deep(.el-menu-item) {
+	padding-left: 44px !important;
+	border-radius: 12px;
+}
+
+:deep(.el-sub-menu .el-sub-menu__title) {
+	border-radius: 12px;
+}
+
+:deep(.svg-icon) {
+	margin-right: 10px;
+	color: inherit;
+}
+
+:deep(a) {
+	display: flex;
+	align-items: center;
+	color: inherit;
+	text-decoration: none;
+}
+</style>
