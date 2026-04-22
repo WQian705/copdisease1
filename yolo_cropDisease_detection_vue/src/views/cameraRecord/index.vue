@@ -3,9 +3,9 @@
 		<div class="record-panel layout-padding-auto layout-padding-view">
 			<section class="record-hero">
 				<div>
-					<span class="hero-badge">摄像检测记录</span>
-					<h2>集中查看实时摄像识别后的处理结果</h2>
-					<p>保留原有查询、分页与删除逻辑，只优化列表布局、视频预览卡片和筛选区层次。</p>
+					<span class="hero-badge">摄像头识别记录</span>
+					<h2>查看摄像头识别结果与逐帧病虫害日志</h2>
+					<p>保留查询、分页与删除逻辑，并在列表内直接展开查看每一帧的识别时间戳和病虫害结果。</p>
 				</div>
 				<div class="hero-side">
 					<span>当前账号</span>
@@ -15,44 +15,59 @@
 
 			<section class="toolbar-card">
 				<div class="toolbar-row">
-					<el-input
-						v-model="state.tableData.param.search1"
-						size="large"
-						placeholder="请输入作物类型"
-						clearable
-						class="search-input"
-					/>
-					<el-button size="large" type="primary" class="query-button" @click="getTableData()">
-						<el-icon><ele-Search /></el-icon>
-						查询记录
-					</el-button>
+					<el-input v-model="state.tableData.param.search1" size="large" placeholder="请输入作物种类" clearable class="search-input" />
+					<el-button size="large" type="primary" class="query-button" @click="getTableData">查询记录</el-button>
 				</div>
 			</section>
 
 			<section class="table-card">
 				<div class="table-head">
-					<h3>录制结果列表</h3>
-					<p>展示摄像识别视频、模型参数和识别时间。</p>
+					<h3>摄像头识别结果</h3>
+					<p>支持在记录列表内直接查看逐帧日志，也可以进入详情页查看视频回放与时间轴联动结果。</p>
 				</div>
+
 				<el-table :data="state.tableData.data" v-loading="state.tableData.loading" class="record-table">
-					<el-table-column prop="num" label="序号" width="90" align="center" />
-					<el-table-column prop="outVideo" label="处理结果" width="220" align="center">
+					<el-table-column type="expand">
+						<template #default="scope">
+							<div class="expand-panel">
+								<div class="expand-title">逐帧病虫害检测结果</div>
+								<div v-if="scope.row.parsedFrameResults.length" class="frame-list">
+									<div v-for="item in scope.row.parsedFrameResults" :key="`${scope.row.id}-${item.frameIndex}-${item.timestamp}`" class="frame-item">
+										<div class="frame-meta">
+											<strong>{{ item.timestamp }}</strong>
+											<span>第 {{ item.frameIndex }} 帧</span>
+										</div>
+										<div class="frame-text">{{ item.summaryText || '未检测到病虫害' }}</div>
+									</div>
+								</div>
+								<div v-else class="empty-text">当前记录暂无逐帧识别数据。</div>
+							</div>
+						</template>
+					</el-table-column>
+					<el-table-column prop="num" label="序号" width="80" align="center" />
+					<el-table-column prop="outVideo" label="识别结果" width="220" align="center">
 						<template #default="scope">
 							<div class="video-preview-card">
-								<video class="video" preload="auto" controls :key="scope.row.outVideo + uniqueKey">
+								<video class="video" preload="metadata" controls :key="scope.row.outVideo + uniqueKey">
 									<source :src="scope.row.outVideo" type="video/mp4" />
 								</video>
 							</div>
 						</template>
 					</el-table-column>
-					<el-table-column prop="kind" label="作物种类" align="center" />
-					<el-table-column prop="weight" label="识别模型" align="center" />
-					<el-table-column prop="conf" label="最小阈值" width="120" align="center" />
-					<el-table-column prop="username" label="识别用户" align="center" show-overflow-tooltip />
-					<el-table-column prop="startTime" label="识别时间" align="center" show-overflow-tooltip />
-					<el-table-column label="操作" width="140" align="center" fixed="right">
+					<el-table-column prop="kind" label="作物种类" align="center" width="120" />
+					<el-table-column prop="weight" label="识别模型" align="center" width="150" />
+					<el-table-column prop="conf" label="最小阈值" align="center" width="120" />
+					<el-table-column label="最新检测结果" min-width="240">
+						<template #default="scope">
+							<span>{{ getLatestSummary(scope.row.parsedFrameResults) }}</span>
+						</template>
+					</el-table-column>
+					<el-table-column prop="username" label="识别用户" align="center" width="120" show-overflow-tooltip />
+					<el-table-column prop="startTime" label="识别时间" align="center" width="180" show-overflow-tooltip />
+					<el-table-column label="操作" width="170" align="center" fixed="right">
 						<template #default="scope">
 							<el-button size="small" text type="primary" @click="onRowDel(scope.row)">删除</el-button>
+							<el-button size="small" text type="primary" @click="show(scope.row)">查看详情</el-button>
 						</template>
 					</el-table-column>
 				</el-table>
@@ -75,36 +90,62 @@
 	</div>
 </template>
 
-<script setup lang="ts" name="systemRole">
+<script setup lang="ts" name="cameraRecord">
 import { onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import request from '/@/utils/request';
 import { useUserInfo } from '/@/stores/userInfo';
 import { storeToRefs } from 'pinia';
+import { router } from '/@/router/index';
+
+type FrameResult = {
+	frameIndex?: number;
+	timestamp?: string;
+	summaryText?: string;
+};
 
 const stores = useUserInfo();
 const { userInfos } = storeToRefs(stores);
+const uniqueKey = ref(0);
 
-const state = reactive<SysRoleState>({
+const state = reactive({
 	tableData: {
-		data: [] as any,
+		data: [] as any[],
 		total: 0,
 		loading: false,
 		param: {
 			search: '',
-			search3: '',
+			search1: '',
 			search2: '',
+			search3: '',
 			pageNum: 1,
 			pageSize: 10,
 		},
 	},
 });
 
-const uniqueKey = ref(0);
+const isSuccessCode = (code: string | number) => String(code) === '0';
+
+const parseFrameResults = (frameResults: string) => {
+	if (!frameResults) return [];
+	try {
+		const parsed = JSON.parse(frameResults);
+		return Array.isArray(parsed) ? parsed : [];
+	} catch (error) {
+		console.error('解析逐帧结果失败', error);
+		return [];
+	}
+};
+
+const getLatestSummary = (frameResults: FrameResult[]) => {
+	if (!frameResults.length) return '暂无识别结果';
+	const latest = frameResults[frameResults.length - 1];
+	return latest?.summaryText || '暂无识别结果';
+};
 
 const getTableData = () => {
 	state.tableData.loading = true;
-	if (userInfos.value.userName != 'admin') {
+	if (userInfos.value.userName !== 'admin') {
 		state.tableData.param.search = userInfos.value.userName;
 	}
 	request
@@ -112,24 +153,31 @@ const getTableData = () => {
 			params: state.tableData.param,
 		})
 		.then((res) => {
-			if (res.code == 0) {
-				state.tableData.data = [];
-				setTimeout(() => {
-					state.tableData.loading = false;
-				}, 500);
-				for (let i = 0; i < res.data.records.length; i++) {
-					state.tableData.data[i] = res.data.records[i];
-					state.tableData.data[i].num = i + 1;
-				}
-				state.tableData.total = res.data.total;
-				uniqueKey.value++;
-			} else {
-				ElMessage({
-					type: 'error',
-					message: res.msg,
-				});
+			state.tableData.loading = false;
+			if (!isSuccessCode(res.code)) {
+				ElMessage.error(res.msg);
+				return;
 			}
+			state.tableData.data = (res.data.records || []).map((item: any, index: number) => ({
+				...item,
+				num: index + 1,
+				parsedFrameResults: parseFrameResults(item.frameResults),
+			}));
+			state.tableData.total = res.data.total || 0;
+			uniqueKey.value++;
+		})
+		.catch(() => {
+			state.tableData.loading = false;
 		});
+};
+
+const show = (row: any) => {
+	window.open(
+		router.resolve({
+			name: 'cameraShow',
+			query: { id: String(row.id), mode: 'camera' },
+		}).href
+	);
 };
 
 const onRowDel = (row: any) => {
@@ -140,21 +188,13 @@ const onRowDel = (row: any) => {
 	})
 		.then(() => {
 			request.delete('/api/cameraRecords/' + row.id).then((res) => {
-				if (res.code == 0) {
-					ElMessage({
-						type: 'success',
-						message: '删除成功',
-					});
+				if (isSuccessCode(res.code)) {
+					ElMessage.success('删除成功');
+					getTableData();
 				} else {
-					ElMessage({
-						type: 'error',
-						message: res.msg,
-					});
+					ElMessage.error(res.msg);
 				}
 			});
-			setTimeout(() => {
-				getTableData();
-			}, 500);
 		})
 		.catch(() => {});
 };
@@ -176,8 +216,18 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .record-page {
+	position: relative;
+	left: auto;
+	top: auto;
+	height: auto;
+	min-height: 100%;
+	overflow: visible;
+
 	.record-panel {
 		padding: 18px;
+		height: auto;
+		min-height: 100%;
+		overflow: visible;
 		background: rgba(255, 255, 255, 0.88);
 	}
 }
@@ -279,10 +329,53 @@ onMounted(() => {
 
 .video {
 	width: 100%;
-	max-height: 120px;
+	max-height: 110px;
 	border-radius: 12px;
 	object-fit: contain;
 	background: #0f1720;
+}
+
+.expand-panel {
+	padding: 18px 12px;
+}
+
+.expand-title {
+	margin-bottom: 12px;
+	font-size: 16px;
+	font-weight: 700;
+	color: #24445b;
+}
+
+.frame-list {
+	max-height: 320px;
+	overflow-y: auto;
+	display: grid;
+	gap: 10px;
+}
+
+.frame-item {
+	padding: 12px;
+	border-radius: 14px;
+	background: #f6faf7;
+}
+
+.frame-meta {
+	display: flex;
+	justify-content: space-between;
+	gap: 12px;
+	color: #64778b;
+	font-size: 13px;
+}
+
+.frame-meta strong {
+	color: #23465f;
+}
+
+.frame-text,
+.empty-text {
+	margin-top: 8px;
+	line-height: 1.6;
+	color: #41576b;
 }
 
 .pagination-wrap {
@@ -292,10 +385,6 @@ onMounted(() => {
 }
 
 .record-table {
-	:deep(.el-table__row) {
-		height: 148px;
-	}
-
 	:deep(.el-table__cell) {
 		padding: 10px 0;
 	}

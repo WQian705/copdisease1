@@ -99,25 +99,27 @@ import request from '/@/utils/request';
 const emit = defineEmits(['refresh']);
 
 const greenhouseDialogFormRef = ref<FormInstance>();
+const createDefaultForm = () => ({
+	id: null,
+	greenhouseName: '',
+	cropType: '',
+	quantity: 0,
+	growthStatus: '',
+	temperature: 0,
+	airHumidity: 0,
+	soilHumidity: 0,
+	co2Concentration: 0,
+	soilPh: 0,
+	lightIntensity: 0,
+	supplementaryLight: '关闭',
+	ventilation: '关闭',
+	irrigation: '关闭',
+	manager: '',
+	recordTime: '',
+});
+
 const state = reactive({
-	form: {
-		id: null,
-		greenhouseName: '',
-		cropType: '',
-		quantity: 0,
-		growthStatus: '',
-		temperature: 0,
-		airHumidity: 0,
-		soilHumidity: 0,
-		co2Concentration: 0,
-		soilPh: 0,
-		lightIntensity: 0,
-		supplementaryLight: '关闭',
-		ventilation: '关闭',
-		irrigation: '关闭',
-		manager: '',
-		recordTime: '',
-	},
+	form: createDefaultForm(),
 	rules: {
 		greenhouseName: [{ required: true, message: '请输入温室名称', trigger: 'blur' }],
 		cropType: [{ required: true, message: '请输入作物类型', trigger: 'blur' }],
@@ -142,31 +144,14 @@ const state = reactive({
 
 const openDialog = (type: string, row: any) => {
 	if (type === 'edit') {
-		state.form = { ...row };
+		state.form = { ...createDefaultForm(), ...row };
 		state.dialog.title = '修改温室信息';
 		state.dialog.submitTxt = '保存修改';
 	} else {
 		state.dialog.title = '新增温室信息';
 		state.dialog.submitTxt = '确认新增';
 		nextTick(() => {
-			state.form = {
-				id: null,
-				greenhouseName: '',
-				cropType: '',
-				quantity: 0,
-				growthStatus: '',
-				temperature: 0,
-				airHumidity: 0,
-				soilHumidity: 0,
-				co2Concentration: 0,
-				soilPh: 0,
-				lightIntensity: 0,
-				supplementaryLight: '关闭',
-				ventilation: '关闭',
-				irrigation: '关闭',
-				manager: '',
-				recordTime: '',
-			};
+			state.form = createDefaultForm();
 		});
 	}
 	state.dialog.isShowDialog = true;
@@ -183,30 +168,28 @@ const onCancel = () => {
 const onSubmit = () => {
 	if (!greenhouseDialogFormRef.value) return;
 	greenhouseDialogFormRef.value.validate((valid: boolean) => {
-		if (valid) {
-			if (state.dialog.title === '修改温室信息') {
-				request.post('/api/greenhouse/update', state.form).then((res) => {
-					if (res.code == 0) {
-						ElMessage.success('修改成功');
-						closeDialog();
-						emit('refresh');
-					} else {
-						ElMessage.error(res.msg);
-					}
-				});
-			} else {
-				request.post('/api/greenhouse', state.form).then((res) => {
-					if (res.code == 0) {
-						ElMessage.success('新增成功');
-						closeDialog();
-						emit('refresh');
-					} else {
-						ElMessage.error(res.msg);
-					}
-				});
-			}
+		if (!valid) return false;
+
+		if (state.dialog.title === '修改温室信息') {
+			request.post('/api/greenhouse/update', state.form).then((res) => {
+				if (String(res.code) === '0') {
+					ElMessage.success('修改成功');
+					closeDialog();
+					emit('refresh');
+				} else {
+					ElMessage.error(res.msg);
+				}
+			});
 		} else {
-			return false;
+			request.post('/api/greenhouse', state.form).then((res) => {
+				if (String(res.code) === '0') {
+					ElMessage.success('新增成功');
+					closeDialog();
+					emit('refresh');
+				} else {
+					ElMessage.error(res.msg);
+				}
+			});
 		}
 	});
 };

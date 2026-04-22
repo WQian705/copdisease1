@@ -5,23 +5,34 @@
 				<div>
 					<span class="hero-badge">环境详情</span>
 					<h2>查看温室环境参数并获取智能调节建议</h2>
-					<p>保留原有温室切换、设备开关状态和 AI 建议请求逻辑，只优化信息分组与展示体验。</p>
+					<p>环境数据已连接智能温室数据库，展示每个温室最新一次采集记录。</p>
 				</div>
 				<div class="hero-side">
 					<span>当前温室</span>
-					<strong>{{ selectedGreenhouse }}</strong>
+					<strong>{{ selectedGreenhouse || '--' }}</strong>
+					<small>最新记录：{{ currentRecord?.recordTime || '--' }}</small>
 				</div>
 			</section>
 
-			<section class="content-grid">
+			<section class="content-grid" v-loading="pageLoading">
 				<div class="metrics-card">
 					<div class="section-head">
 						<div>
 							<h3>环境监测</h3>
-							<p>选择温室后查看当前核心环境指标。</p>
+							<p>选择温室后查看当前核心环境指标，数据来自智能温室最新记录。</p>
 						</div>
-						<el-select v-model="selectedGreenhouse" placeholder="请选择温室" class="greenhouse-select">
-							<el-option v-for="(greenhouse, index) in greenhouses" :key="index" :label="greenhouse" :value="greenhouse" />
+						<el-select
+							v-model="selectedGreenhouse"
+							placeholder="请选择温室"
+							class="greenhouse-select"
+							:disabled="!greenhouses.length"
+						>
+							<el-option
+								v-for="greenhouse in greenhouses"
+								:key="greenhouse"
+								:label="greenhouse"
+								:value="greenhouse"
+							/>
 						</el-select>
 					</div>
 
@@ -40,10 +51,10 @@
 
 					<div class="device-head">
 						<h4>设备状态</h4>
-						<p>当前控制设备可手动切换显示状态。</p>
+						<p>设备状态不连接数据库，可在页面中手动切换展示状态。</p>
 					</div>
 					<div class="device-grid">
-						<div v-for="(item, index) in thirdRow" :key="'c' + index" class="device-item">
+						<div v-for="(item, index) in deviceStates" :key="'c' + index" class="device-item">
 							<div class="device-meta">
 								<i :class="`iconfontjs ${item.icon}`" :style="{ color: item.status ? '#2c79a5' : '#90a0ad' }" class="metric-icon"></i>
 								<div>
@@ -51,7 +62,7 @@
 									<div class="device-state">{{ item.status ? '已开启' : '已关闭' }}</div>
 								</div>
 							</div>
-							<el-switch v-model="item.status" active-color="#2c79a5" inactive-color="#c7d1d8"></el-switch>
+							<el-switch v-model="item.status" active-color="#2c79a5" inactive-color="#c7d1d8" />
 						</div>
 					</div>
 				</div>
@@ -60,9 +71,17 @@
 					<div class="section-head column">
 						<div>
 							<h3>智能建议</h3>
-							<p>结合当前环境参数，快速获取种植调整方向。</p>
+							<p>结合当前环境参数与作物信息，快速获取当前温室调节方向。</p>
 						</div>
-						<el-button type="primary" class="suggest-button" @click="getSuggestions" :loading="loading">获取建议</el-button>
+						<el-button
+							type="primary"
+							class="suggest-button"
+							@click="getSuggestions"
+							:loading="loading"
+							:disabled="!currentRecord"
+						>
+							获取建议
+						</el-button>
 					</div>
 
 					<div v-if="suggestions.length" class="suggestion-list">
@@ -77,39 +96,139 @@
 	</div>
 </template>
 
-<script setup>
-import { ref } from 'vue';
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue';
+import { ElMessage } from 'element-plus';
 import axios from 'axios';
+import request from '/@/utils/request';
 
-const greenhouses = ref(['1号温室', '2号温室', '3号温室', '4号温室', '5号温室', '6号温室', '7号温室', '8号温室', '9号温室']);
-const selectedGreenhouse = ref(greenhouses.value[0]);
+interface GreenhouseRecord {
+	id?: number | string;
+	greenhouseName: string;
+	cropType?: string;
+	quantity?: number;
+	growthStatus?: string;
+	temperature?: number | string;
+	airHumidity?: number | string;
+	soilHumidity?: number | string;
+	co2Concentration?: number | string;
+	soilPh?: number | string;
+	lightIntensity?: number | string;
+	manager?: string;
+	recordTime?: string;
+}
 
-const firstRow = ref([
-	{ icon: 'icon-daqiwendu', label: '室内温度', value: '25.5°C' },
-	{ icon: 'icon-kongqishidu_kongqishidu', label: '空气湿度', value: '62.3%' },
-	{ icon: 'icon-turangshidu', label: '土壤湿度', value: '64.7%' },
-]);
-
-const secondRow = ref([
-	{ icon: 'icon-eryanghuatan', label: '二氧化碳', value: '434ppm' },
-	{ icon: 'icon-turangPH', label: 'pH值', value: '6.5' },
-	{ icon: 'icon-guangzhaoqiangdu', label: '光照强度', value: '893lux' },
-]);
-
-const thirdRow = ref([
+const greenhouseRecords = ref<GreenhouseRecord[]>([]);
+const greenhouses = ref<string[]>([]);
+const selectedGreenhouse = ref('');
+const suggestions = ref<string[]>([]);
+const loading = ref(false);
+const pageLoading = ref(false);
+const deviceStates = ref([
 	{ icon: 'icon-shuibeng', label: '水泵', status: false },
 	{ icon: 'icon-a-buguangdengzidong', label: '补光灯', status: true },
 	{ icon: 'icon-fengshan', label: '风扇', status: false },
 ]);
 
-const suggestions = ref([]);
-const loading = ref(false);
 const apiKey = 'sk-3rG1hl3sdDbbRoqEHr7utZpcbqbufy1miSD9XhLvVxJGAb4W';
 
+const parseRecordTime = (value?: string) => {
+	if (!value) return 0;
+	const time = new Date(value.replace(/-/g, '/')).getTime();
+	return Number.isNaN(time) ? 0 : time;
+};
+
+const formatDecimal = (value?: number | string, digits = 1) => {
+	if (value === null || value === undefined || value === '') return '--';
+	const numberValue = Number(value);
+	if (Number.isNaN(numberValue)) return '--';
+	return numberValue.toFixed(digits);
+};
+
+const formatInteger = (value?: number | string) => {
+	if (value === null || value === undefined || value === '') return '--';
+	const numberValue = Number(value);
+	if (Number.isNaN(numberValue)) return '--';
+	return String(numberValue);
+};
+
+const currentRecord = computed(() => {
+	return greenhouseRecords.value.find((item) => item.greenhouseName === selectedGreenhouse.value) || null;
+});
+
+const firstRow = computed(() => [
+	{ icon: 'icon-daqiwendu', label: '室内温度', value: `${formatDecimal(currentRecord.value?.temperature)}°C` },
+	{ icon: 'icon-kongqishidu_kongqishidu', label: '空气湿度', value: `${formatInteger(currentRecord.value?.airHumidity)}%` },
+	{ icon: 'icon-turangshidu', label: '土壤湿度', value: `${formatInteger(currentRecord.value?.soilHumidity)}%` },
+]);
+
+const secondRow = computed(() => [
+	{ icon: 'icon-eryanghuatan', label: '二氧化碳', value: `${formatInteger(currentRecord.value?.co2Concentration)}${currentRecord.value?.co2Concentration === null || currentRecord.value?.co2Concentration === undefined || currentRecord.value?.co2Concentration === '' ? '' : 'ppm'}` },
+	{ icon: 'icon-turangPH', label: 'pH值', value: formatDecimal(currentRecord.value?.soilPh) },
+	{ icon: 'icon-guangzhaoqiangdu', label: '光照强度', value: `${formatInteger(currentRecord.value?.lightIntensity)}${currentRecord.value?.lightIntensity === null || currentRecord.value?.lightIntensity === undefined || currentRecord.value?.lightIntensity === '' ? '' : 'lux'}` },
+]);
+
+const buildLatestRecords = (records: GreenhouseRecord[]) => {
+	const recordMap = new Map<string, GreenhouseRecord>();
+
+	records.forEach((record) => {
+		if (!record.greenhouseName) return;
+		const current = recordMap.get(record.greenhouseName);
+		if (!current || parseRecordTime(record.recordTime) > parseRecordTime(current.recordTime)) {
+			recordMap.set(record.greenhouseName, record);
+		}
+	});
+
+	return Array.from(recordMap.values()).sort((a, b) => a.greenhouseName.localeCompare(b.greenhouseName, 'zh-CN'));
+};
+
+const getEnvData = async () => {
+	pageLoading.value = true;
+	try {
+		const res = await request.get('/api/greenhouse', {
+			params: {
+				pageNum: 1,
+				pageSize: 1000,
+				search: '',
+				cropType: '',
+				growthStatus: '',
+				manager: '',
+				recordTime: '',
+			},
+		});
+
+		if (String(res.code) !== '0') {
+			ElMessage.error(res.msg || '获取温室数据失败');
+			return;
+		}
+
+		const latestRecords = buildLatestRecords(res.data?.records || []);
+		greenhouseRecords.value = latestRecords;
+		greenhouses.value = latestRecords.map((item) => item.greenhouseName);
+
+		if (!greenhouses.value.length) {
+			selectedGreenhouse.value = '';
+			return;
+		}
+
+		if (!greenhouses.value.includes(selectedGreenhouse.value)) {
+			selectedGreenhouse.value = greenhouses.value[0];
+		}
+	} catch (error) {
+		ElMessage.error('环境监测数据加载失败');
+	} finally {
+		pageLoading.value = false;
+	}
+};
+
 async function getSuggestions() {
+	if (!currentRecord.value) {
+		ElMessage.warning('当前温室暂无可用环境数据');
+		return;
+	}
+
 	loading.value = true;
 	try {
-		const cropInfo = selectedGreenhouse.value === '1号温室' ? '当前种植作物是玉米。' : '当前种植作物信息未提供。';
 		const response = await axios.post(
 			'https://api.chatanywhere.tech/v1/chat/completions',
 			{
@@ -117,11 +236,14 @@ async function getSuggestions() {
 				messages: [
 					{
 						role: 'system',
-						content: '根据以下环境数据和种植作物提供当前环境的调节建议，如果暂时不需要调整，也请说明原因。',
+						content: '请根据提供的温室最新环境数据，输出简洁、可执行的环境调节建议；如果当前参数基本合理，也请说明原因。',
 					},
-					{ role: 'user', content: cropInfo },
-					...firstRow.value.map((item) => ({ role: 'user', content: `${item.label}: ${item.value}` })),
-					...secondRow.value.map((item) => ({ role: 'user', content: `${item.label}: ${item.value}` })),
+					{ role: 'user', content: `温室名称：${currentRecord.value.greenhouseName}` },
+					{ role: 'user', content: `作物类型：${currentRecord.value.cropType || '未填写'}` },
+					{ role: 'user', content: `生长状态：${currentRecord.value.growthStatus || '未填写'}` },
+					{ role: 'user', content: `记录时间：${currentRecord.value.recordTime || '未知'}` },
+					...firstRow.value.map((item) => ({ role: 'user', content: `${item.label}：${item.value}` })),
+					...secondRow.value.map((item) => ({ role: 'user', content: `${item.label}：${item.value}` })),
 				],
 				temperature: 0.7,
 			},
@@ -133,13 +255,21 @@ async function getSuggestions() {
 			}
 		);
 
-		suggestions.value = response.data.choices[0].message.content.split('\n');
+		suggestions.value = response.data.choices[0].message.content.split('\n').filter((item: string) => item.trim());
 	} catch (error) {
-		console.error('Error:', error);
+		ElMessage.error('获取智能建议失败');
 	} finally {
 		loading.value = false;
 	}
 }
+
+watch(selectedGreenhouse, () => {
+	suggestions.value = [];
+});
+
+onMounted(() => {
+	getEnvData();
+});
 </script>
 
 <style scoped lang="scss">
@@ -181,20 +311,22 @@ async function getSuggestions() {
 }
 
 .hero-side {
-	min-width: 160px;
+	min-width: 180px;
 	padding: 18px;
 	border-radius: 20px;
 	background: rgba(255, 255, 255, 0.12);
 }
 
-.hero-side span {
+.hero-side span,
+.hero-side small {
+	display: block;
 	color: rgba(255, 255, 255, 0.72);
 	font-size: 13px;
 }
 
 .hero-side strong {
 	display: block;
-	margin-top: 10px;
+	margin: 10px 0 6px;
 	font-size: 26px;
 }
 
@@ -342,7 +474,6 @@ async function getSuggestions() {
 }
 
 @media (max-width: 1100px) {
-	.env-hero,
 	.content-grid {
 		grid-template-columns: 1fr;
 	}

@@ -1,118 +1,140 @@
 import json
 import os
 import subprocess
+
 import cv2
+import numpy as np
 import requests
 from flask import Flask, Response, request
-from ultralytics import YOLO
-from predict import predictImg
 from flask_socketio import SocketIO, emit
+from PIL import Image, ImageDraw, ImageFont
+from ultralytics import YOLO
+
+from predict import predictImg
 
 
-# Flask 应用设置
 class VideoProcessingApp:
     def __init__(self, host='0.0.0.0', port=5000):
-        """初始化 Flask 应用并设置路由"""
         self.app = Flask(__name__)
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*")  # 初始化 SocketIO
+        self.socketio = SocketIO(self.app, cors_allowed_origins='*')
         self.host = host
         self.port = port
         self.setup_routes()
-        self.data = {}  # 存储接收参数
+        self.data = {}
         self.paths = {
             'download': './runs/video/download.mp4',
             'output': './runs/video/output.mp4',
-            'camera_output': "./runs/video/camera_output.avi",
-            'video_output': "./runs/video/camera_output.avi"
+            'camera_output': './runs/video/camera_output.avi',
+            'video_output': './runs/video/camera_output.avi',
         }
-        self.recording = False  # 标志位，判断是否正在录制视频
+        self.recording = False
+
+    def get_overlay_font(self, size=18):
+        font_candidates = [
+            'C:/Windows/Fonts/msyh.ttc',
+            'C:/Windows/Fonts/msyhbd.ttc',
+            'C:/Windows/Fonts/simhei.ttf',
+            'C:/Windows/Fonts/simsun.ttc',
+        ]
+        for font_path in font_candidates:
+            if os.path.exists(font_path):
+                try:
+                    return ImageFont.truetype(font_path, size=size)
+                except OSError:
+                    continue
+        return ImageFont.load_default()
 
     def setup_routes(self):
-        """设置所有路由"""
         self.app.add_url_rule('/file_names', 'file_names', self.file_names, methods=['GET'])
         self.app.add_url_rule('/predictImg', 'predictImg', self.predictImg, methods=['POST'])
         self.app.add_url_rule('/predictVideo', 'predictVideo', self.predictVideo)
         self.app.add_url_rule('/predictCamera', 'predictCamera', self.predictCamera)
         self.app.add_url_rule('/stopCamera', 'stopCamera', self.stopCamera, methods=['GET'])
 
-        # 添加 WebSocket 事件
         @self.socketio.on('connect')
         def handle_connect():
-            print("WebSocket connected!")
-            emit('message', {'data': 'Connected to WebSocket server!'})
+            print('WebSocket connected')
+            emit('message', {'data': 'Socket connected'})
 
         @self.socketio.on('disconnect')
         def handle_disconnect():
-            print("WebSocket disconnected!")
+            print('WebSocket disconnected')
 
     def run(self):
-        """启动 Flask 应用"""
         self.socketio.run(self.app, host=self.host, port=self.port, allow_unsafe_werkzeug=True)
 
     def file_names(self):
-        """模型列表接口"""
-        weight_items = [{'value': name, 'label': name} for name in self.get_file_names("./weights")]
+        weight_items = [{'value': name, 'label': name} for name in self.get_file_names('./weights')]
         return json.dumps({'weight_items': weight_items})
 
     def predictImg(self):
-        """图片预测接口"""
         data = request.get_json()
-        print(data)
         self.data.clear()
-        self.data.update({
-            "username": data['username'], "weight": data['weight'],
-            "conf": data['conf'], "startTime": data['startTime'],
-            "inputImg": data['inputImg'],
-            "kind": data['kind']
-        })
-        print(self.data)
-        predict = predictImg.ImagePredictor(weights_path=f'./weights/{self.data["weight"]}',
-                                            img_path=self.data["inputImg"], save_path='./runs/result.jpg', kind=self.data["kind"],
-                                            conf=float(self.data["conf"]))
-        # 执行预测
-        results = predict.predict()
-        uploadedUrl = self.upload('./runs/result.jpg')
-        if results['labels'] != '预测失败':
-            self.data["status"] = 200
-            self.data["message"] = "预测成功"
-            self.data["outImg"] = uploadedUrl
-            self.data["allTime"] = results['allTime']
-            self.data["confidence"] = json.dumps(results['confidences'])
-            self.data["label"] = json.dumps(results['labels'])
+        self.data.update(
+            {
+                'username': data['username'],
+                'weight': data['weight'],
+                'conf': data['conf'],
+                'startTime': data['startTime'],
+                'inputImg': data['inputImg'],
+                'kind': data['kind'],
+            }
+        )
+        predictor = predictImg.ImagePredictor(
+            weights_path=f'./weights/{self.data["weight"]}',
+            img_path=self.data['inputImg'],
+            save_path='./runs/result.jpg',
+            kind=self.data['kind'],
+            conf=float(self.data['conf']),
+        )
+        results = predictor.predict()
+        uploaded_url = self.upload('./runs/result.jpg')
+        if results['labels'] != 'prediction_failed':
+            self.data['status'] = 200
+            self.data['message'] = 'prediction_success'
+            self.data['outImg'] = uploaded_url
+            self.data['allTime'] = results['allTime']
+            self.data['confidence'] = json.dumps(results['confidences'])
+            self.data['label'] = json.dumps(results['labels'])
         else:
-            self.data["status"] = 400
-            self.data["message"] = "该图片无法识别，请重新上传！"
-        path = self.data["inputImg"].split('/')[-1]
+            self.data['status'] = 400
+            self.data['message'] = 'prediction_failed'
+        path = self.data['inputImg'].split('/')[-1]
         if os.path.exists('./' + path):
             os.remove('./' + path)
         return json.dumps(self.data, ensure_ascii=False)
 
     def predictVideo(self):
-        """视频流处理接口"""
         self.data.clear()
-        self.data.update({
-            "username": request.args.get('username'), "weight": request.args.get('weight'),
-            "conf": request.args.get('conf'), "startTime": request.args.get('startTime'),
-            "inputVideo": request.args.get('inputVideo'),
-            "kind": request.args.get('kind')
-        })
-        self.download(self.data["inputVideo"], self.paths['download'])
+        self.data.update(
+            {
+                'username': request.args.get('username'),
+                'weight': request.args.get('weight'),
+                'conf': request.args.get('conf'),
+                'startTime': request.args.get('startTime'),
+                'inputVideo': request.args.get('inputVideo'),
+                'kind': request.args.get('kind'),
+                'frameResults': '[]',
+            }
+        )
+        self.download(self.data['inputVideo'], self.paths['download'])
         cap = cv2.VideoCapture(self.paths['download'])
         if not cap.isOpened():
-            raise ValueError("无法打开视频文件")
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
-        print(fps)
+            raise ValueError('can_not_open_video')
+        fps = int(cap.get(cv2.CAP_PROP_FPS)) or 25
+        frame_index = 0
+        frame_results = []
 
-        # 视频写入器
         video_writer = cv2.VideoWriter(
             self.paths['video_output'],
             cv2.VideoWriter_fourcc(*'XVID'),
             fps,
-            (640, 480)
+            (640, 480),
         )
         model = YOLO(f'./weights/{self.data["weight"]}')
 
         def generate():
+            nonlocal frame_index
             try:
                 while cap.isOpened():
                     ret, frame = cap.read()
@@ -121,38 +143,53 @@ class VideoProcessingApp:
                     frame = cv2.resize(frame, (640, 480))
                     results = model.predict(source=frame, conf=float(self.data['conf']), show=False)
                     processed_frame = results[0].plot()
+                    frame_result = self.build_frame_result(results[0], frame_index, fps)
+                    processed_frame = self.draw_frame_overlay(processed_frame, frame_result)
+                    frame_results.append(frame_result)
+                    self.socketio.emit('frame_result', {'data': {**frame_result, 'source': 'video'}})
                     video_writer.write(processed_frame)
                     _, jpeg = cv2.imencode('.jpg', processed_frame)
+                    frame_index += 1
                     yield b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n'
             finally:
                 self.cleanup_resources(cap, video_writer)
-                self.socketio.emit('message', {'data': '处理完成，正在保存！'})
+                self.socketio.emit('message', {'data': 'video_processing_finished'})
                 for progress in self.convert_avi_to_mp4(self.paths['video_output']):
                     self.socketio.emit('progress', {'data': progress})
-                uploadedUrl = self.upload(self.paths['output'])
-                self.data["outVideo"] = uploadedUrl
+                uploaded_url = self.upload(self.paths['output'])
+                self.data['outVideo'] = uploaded_url
+                self.data['frameResults'] = json.dumps(frame_results, ensure_ascii=False)
                 self.save_data(json.dumps(self.data), 'http://localhost:9999/videoRecords')
                 self.cleanup_files([self.paths['download'], self.paths['output'], self.paths['video_output']])
 
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
     def predictCamera(self):
-        """摄像头视频流处理接口"""
         self.data.clear()
-        self.data.update({
-            "username": request.args.get('username'), "weight": request.args.get('weight'),
-            "kind": request.args.get('kind'),
-            "conf": request.args.get('conf'), "startTime": request.args.get('startTime')
-        })
-        self.socketio.emit('message', {'data': '正在加载，请稍等！'})
+        self.data.update(
+            {
+                'username': request.args.get('username'),
+                'weight': request.args.get('weight'),
+                'kind': request.args.get('kind'),
+                'conf': request.args.get('conf'),
+                'startTime': request.args.get('startTime'),
+                'frameResults': '[]',
+            }
+        )
+        self.socketio.emit('message', {'data': 'camera_loading'})
         model = YOLO(f'./weights/{self.data["weight"]}')
         cap = cv2.VideoCapture(0)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        video_writer = cv2.VideoWriter(self.paths['camera_output'], cv2.VideoWriter_fourcc(*'XVID'), 20, (640, 480))
+
+        fps = 20
+        frame_index = 0
+        frame_results = []
+        video_writer = cv2.VideoWriter(self.paths['camera_output'], cv2.VideoWriter_fourcc(*'XVID'), fps, (640, 480))
         self.recording = True
 
         def generate():
+            nonlocal frame_index
             try:
                 while self.recording:
                     ret, frame = cap.read()
@@ -160,61 +197,158 @@ class VideoProcessingApp:
                         break
                     results = model.predict(source=frame, imgsz=640, conf=float(self.data['conf']), show=False)
                     processed_frame = results[0].plot()
+                    frame_result = self.build_frame_result(results[0], frame_index, fps)
+                    processed_frame = self.draw_frame_overlay(processed_frame, frame_result)
+                    frame_results.append(frame_result)
+                    self.socketio.emit('frame_result', {'data': {**frame_result, 'source': 'camera'}})
                     if self.recording and video_writer:
                         video_writer.write(processed_frame)
                     _, jpeg = cv2.imencode('.jpg', processed_frame)
+                    frame_index += 1
                     yield b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n'
             finally:
                 self.cleanup_resources(cap, video_writer)
-                self.socketio.emit('message', {'data': '处理完成，正在保存！'})
+                self.socketio.emit('message', {'data': 'camera_processing_finished'})
                 for progress in self.convert_avi_to_mp4(self.paths['camera_output']):
                     self.socketio.emit('progress', {'data': progress})
-                uploadedUrl = self.upload(self.paths['output'])
-                self.data["outVideo"] = uploadedUrl
-                print(self.data)
+                uploaded_url = self.upload(self.paths['output'])
+                self.data['outVideo'] = uploaded_url
+                self.data['frameResults'] = json.dumps(frame_results, ensure_ascii=False)
                 self.save_data(json.dumps(self.data), 'http://localhost:9999/cameraRecords')
                 self.cleanup_files([self.paths['download'], self.paths['output'], self.paths['camera_output']])
 
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
     def stopCamera(self):
-        """停止摄像头预测"""
         self.recording = False
-        return json.dumps({"status": 200, "message": "预测成功", "code": 0})
+        return json.dumps({'status': 200, 'message': 'ok', 'code': 0})
 
     def save_data(self, data, path):
-        """将结果数据上传到服务器"""
         headers = {'Content-Type': 'application/json'}
         try:
             response = requests.post(path, data=data, headers=headers)
-            print("记录上传成功！" if response.status_code == 200 else f"记录上传失败，状态码: {response.status_code}")
-        except requests.RequestException as e:
-            print(f"上传记录时发生错误: {str(e)}")
+            if response.status_code == 200:
+                print('record_saved')
+            else:
+                print(f'record_save_failed: {response.status_code}')
+        except requests.RequestException as exc:
+            print(f'save_data_error: {str(exc)}')
+
+    def build_frame_result(self, result, frame_index, fps):
+        boxes = result.boxes
+        names = result.names
+        detections = []
+        label_summary = {}
+
+        if boxes is not None and boxes.cls is not None:
+            cls_list = boxes.cls.tolist()
+            conf_list = boxes.conf.tolist() if boxes.conf is not None else []
+            xyxy_list = boxes.xyxy.tolist() if boxes.xyxy is not None else []
+            for index, cls_id in enumerate(cls_list):
+                label = str(names.get(int(cls_id), int(cls_id)))
+                confidence = round(float(conf_list[index]) if index < len(conf_list) else 0, 4)
+                box = xyxy_list[index] if index < len(xyxy_list) else []
+                detections.append(
+                    {
+                        'label': label,
+                        'confidence': confidence,
+                        'box': [round(float(item), 2) for item in box] if box else [],
+                    }
+                )
+                if label not in label_summary or confidence > label_summary[label]:
+                    label_summary[label] = confidence
+
+        top_labels = [
+            {'label': label, 'confidence': confidence}
+            for label, confidence in sorted(label_summary.items(), key=lambda item: item[1], reverse=True)
+        ]
+        timestamp_seconds = round(frame_index / fps, 3) if fps else 0
+        return {
+            'frameIndex': frame_index,
+            'timestamp': self.format_timestamp(timestamp_seconds),
+            'timestampSeconds': timestamp_seconds,
+            'detectionCount': len(detections),
+            'labels': [item['label'] for item in top_labels],
+            'topLabels': top_labels,
+            'detections': detections,
+            'summaryText': '未检测到病虫害'
+            if not top_labels
+            else ' | '.join([f"{item['label']}({item['confidence'] * 100:.1f}%)" for item in top_labels]),
+        }
+
+    def format_timestamp(self, seconds):
+        total_milliseconds = int(round(seconds * 1000))
+        hours, remainder = divmod(total_milliseconds, 3600000)
+        minutes, remainder = divmod(remainder, 60000)
+        secs, milliseconds = divmod(remainder, 1000)
+        return f'{hours:02d}:{minutes:02d}:{secs:02d}.{milliseconds:03d}'
+
+    def draw_frame_overlay(self, frame, frame_result):
+        lines = [
+            f"TIME  {frame_result.get('timestamp', '--:--:--.---')}",
+            f"FRAME {frame_result.get('frameIndex', 0)}",
+            f"RESULT {self.compact_summary(frame_result)}",
+        ]
+        rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        image = Image.fromarray(rgb_image)
+        draw = ImageDraw.Draw(image, 'RGBA')
+        font = self.get_overlay_font(size=18)
+        padding_x = 12
+        padding_y = 10
+        line_gap = 8
+        origin_x = 16
+        origin_y = 16
+        max_width = 0
+        line_heights = []
+
+        for line in lines:
+            left, top, right, bottom = draw.textbbox((0, 0), line[:60], font=font)
+            max_width = max(max_width, right - left)
+            line_heights.append(bottom - top)
+
+        box_width = min(max_width + padding_x * 2, frame.shape[1] - 24)
+        box_height = padding_y * 2 + sum(line_heights) + line_gap * (len(lines) - 1)
+        draw.rounded_rectangle(
+            (origin_x, origin_y, origin_x + box_width, origin_y + box_height),
+            radius=12,
+            fill=(18, 34, 46, 165),
+        )
+
+        current_y = origin_y + padding_y
+        for index, line in enumerate(lines):
+            draw.text((origin_x + padding_x, current_y), line[:60], font=font, fill=(245, 248, 250, 255))
+            current_y += line_heights[index] + line_gap
+
+        return cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+
+    def compact_summary(self, frame_result):
+        top_labels = frame_result.get('topLabels') or []
+        if not top_labels:
+            return 'no detection'
+        parts = [f"{item['label']} {item['confidence'] * 100:.1f}%" for item in top_labels[:2]]
+        return ' | '.join(parts)
 
     def convert_avi_to_mp4(self, temp_output):
-        """使用 FFmpeg 将 AVI 格式转换为 MP4 格式，并显示转换进度。"""
-        ffmpeg_command = f"ffmpeg -i {temp_output} -vcodec libx264 {self.paths['output']} -y"
-        process = subprocess.Popen(ffmpeg_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   text=True)
+        ffmpeg_command = f'ffmpeg -i {temp_output} -vcodec libx264 {self.paths["output"]} -y'
+        process = subprocess.Popen(ffmpeg_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         total_duration = self.get_video_duration(temp_output)
 
         for line in process.stderr:
-            if "time=" in line:
+            if 'time=' in line:
                 try:
-                    time_str = line.split("time=")[1].split(" ")[0]
-                    h, m, s = map(float, time_str.split(":"))
+                    time_str = line.split('time=')[1].split(' ')[0]
+                    h, m, s = map(float, time_str.split(':'))
                     processed_time = h * 3600 + m * 60 + s
                     if total_duration > 0:
                         progress = (processed_time / total_duration) * 100
                         yield progress
-                except Exception as e:
-                    print(f"解析进度时发生错误: {e}")
+                except Exception as exc:
+                    print(f'progress_parse_error: {exc}')
 
         process.wait()
         yield 100
 
     def get_video_duration(self, path):
-        """获取视频总时长（秒）"""
         try:
             cap = cv2.VideoCapture(path)
             if not cap.isOpened():
@@ -227,30 +361,26 @@ class VideoProcessingApp:
             return 0
 
     def get_file_names(self, directory):
-        """获取指定文件夹中的所有文件名"""
         try:
             return [file for file in os.listdir(directory) if os.path.isfile(os.path.join(directory, file))]
-        except Exception as e:
-            print(f"发生错误: {e}")
+        except Exception as exc:
+            print(f'get_file_names_error: {exc}')
             return []
 
     def upload(self, out_path):
-        """上传处理后的图片或视频文件到远程服务器"""
-        upload_url = "http://localhost:9999/files/upload"
+        upload_url = 'http://localhost:9999/files/upload'
         try:
             with open(out_path, 'rb') as file:
                 files = {'file': (os.path.basename(out_path), file)}
                 response = requests.post(upload_url, files=files)
                 if response.status_code == 200:
-                    print("文件上传成功！")
                     return response.json()['data']
-                else:
-                    print("文件上传失败！")
-        except Exception as e:
-            print(f"上传文件时发生错误: {str(e)}")
+                print(f'upload_failed: {response.status_code}')
+        except Exception as exc:
+            print(f'upload_error: {str(exc)}')
+        return ''
 
     def download(self, url, save_path):
-        """下载文件并保存到指定路径"""
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         try:
             with requests.get(url, stream=True) as response:
@@ -259,18 +389,15 @@ class VideoProcessingApp:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             file.write(chunk)
-            print(f"文件已成功下载并保存到 {save_path}")
-        except requests.RequestException as e:
-            print(f"下载失败: {e}")
+        except requests.RequestException as exc:
+            print(f'download_error: {exc}')
 
     def cleanup_files(self, file_paths):
-        """清理文件"""
         for path in file_paths:
             if os.path.exists(path):
                 os.remove(path)
 
     def cleanup_resources(self, cap, video_writer):
-        """释放资源"""
         if cap.isOpened():
             cap.release()
         if video_writer is not None:
@@ -278,7 +405,6 @@ class VideoProcessingApp:
         cv2.destroyAllWindows()
 
 
-# 启动应用
 if __name__ == '__main__':
     video_app = VideoProcessingApp()
     video_app.run()

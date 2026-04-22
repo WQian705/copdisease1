@@ -5,7 +5,7 @@
 				<div>
 					<span class="hero-badge">数据大屏</span>
 					<h2>从系统页内快速进入可视化总览</h2>
-					<p>不改动原有大屏地址与 iframe 加载方式，只补一层更完整的承载布局，让入口页观感更统一。</p>
+					<p>保留原有大屏地址与 iframe 加载方式，只补一层更完整的承载布局，让入口观感更统一。</p>
 				</div>
 				<div class="hero-side">
 					<span>展示模式</span>
@@ -39,11 +39,18 @@ export default {
 <style scoped lang="scss">
 .datav-page {
 	width: 100%;
+	position: relative;
+	height: auto !important;
+	min-height: 100%;
+	overflow: visible;
 }
 
 .datav-panel {
 	padding: 18px;
 	background: rgba(255, 255, 255, 0.88);
+	height: auto !important;
+	min-height: 100%;
+	overflow: visible;
 }
 
 .datav-hero {
@@ -120,8 +127,8 @@ export default {
 
 .screen-frame iframe {
 	width: 100%;
-	height: calc(100vh - 270px);
-	min-height: 680px;
+	height: 980px;
+	min-height: 980px;
 	border: 0;
 	display: block;
 }
@@ -132,8 +139,8 @@ export default {
 	}
 
 	.screen-frame iframe {
-		height: calc(100vh - 320px);
-		min-height: 560px;
+		height: 760px;
+		min-height: 760px;
 	}
 }
 </style>

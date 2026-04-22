@@ -22,6 +22,7 @@ public class VideoRecords {
     private String username;
     private String kind;
     private String startTime;
+    private String frameResults;
 
     public Integer getId() {
         return id;
@@ -85,5 +86,13 @@ public class VideoRecords {
 
     public void setKind(String kind) {
         this.kind = kind;
+    }
+
+    public String getFrameResults() {
+        return frameResults;
+    }
+
+    public void setFrameResults(String frameResults) {
+        this.frameResults = frameResults;
     }
 }

@@ -25,7 +25,7 @@
 								v-model="state.form.avatar"
 								ref="uploadFile"
 								class="avatar-uploader"
-								action="http://localhost:9999/files/upload"
+								:action="uploadActionUrl"
 								:show-file-list="false"
 								:on-success="handleAvatarSuccessone"
 							>
@@ -115,6 +115,7 @@ import { reactive, ref, onMounted } from 'vue';
 import type { UploadInstance, UploadProps, FormInstance } from 'element-plus';
 import { ElMessage } from 'element-plus';
 import request from '/@/utils/request';
+import { uploadActionUrl } from '/@/utils/serviceUrl';
 import { useUserInfo } from '/@/stores/userInfo';
 import { storeToRefs } from 'pinia';
 import { Plus, Check, User, Lock, UserFilled, Message, Phone } from '@element-plus/icons-vue';

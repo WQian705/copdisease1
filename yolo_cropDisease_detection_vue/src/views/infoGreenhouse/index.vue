@@ -104,14 +104,14 @@ const getTableData = () => {
 			params: state.tableData.param,
 		})
 		.then((res) => {
-			if (res.code == 0) {
+			if (String(res.code) === '0') {
 				state.tableData.data = [];
 				setTimeout(() => {
 					state.tableData.loading = false;
 				}, 500);
 				for (let i = 0; i < res.data.records.length; i++) {
 					state.tableData.data[i] = res.data.records[i];
-					state.tableData.data[i]['num'] = i + 1;
+					state.tableData.data[i].num = i + 1;
 				}
 				state.tableData.total = res.data.total;
 			} else {
@@ -136,7 +136,7 @@ const onRowDel = (row: any) => {
 	})
 		.then(() => {
 			request.delete('/api/greenhouse/' + row.id).then((res) => {
-				if (res.code == 0) {
+				if (String(res.code) === '0') {
 					ElMessage({ type: 'success', message: '删除成功' });
 					setTimeout(() => {
 						getTableData();

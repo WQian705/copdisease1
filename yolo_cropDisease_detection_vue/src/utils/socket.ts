@@ -1,21 +1,28 @@
-import { io } from 'socket.io-client';
- 
+import { io, Socket } from 'socket.io-client';
+import { socketBaseUrl, socketPath } from '/@/utils/serviceUrl';
+
 export class SocketService {
-  private socket;
- 
-  constructor() {
-    this.socket = io('http://localhost:5000');
-  }
- 
-  on(event: string, callback: Function) {
-    this.socket.on(event, (data) => callback(data.data));
-  }
- 
-  emit(event: string, data: any) {
-    this.socket.emit(event, data);
-  }
- 
-  disconnect() {
-    this.socket.disconnect();
-  }
+	private socket: Socket;
+
+	constructor() {
+		this.socket = io(socketBaseUrl, {
+			path: socketPath,
+			transports: ['polling'],
+			reconnection: true,
+		});
+	}
+
+	on(event: string, callback: (data: any) => void) {
+		this.socket.on(event, (payload: any) => {
+			callback(payload?.data ?? payload);
+		});
+	}
+
+	emit(event: string, data: any) {
+		this.socket.emit(event, data);
+	}
+
+	disconnect() {
+		this.socket.disconnect();
+	}
 }

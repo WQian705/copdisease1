@@ -105,7 +105,7 @@ router.beforeEach(async (to, from, next) => {
 	} else if (to.path === '/register' && !token) {
 		next();
 		NProgress.done();
-	} else if (to.path === '/videoShow' && token) {
+	} else if ((to.path === '/imgShow' || to.path === '/videoShow' || to.path === '/cameraShow') && token) {
 		next();
 		NProgress.done();
 	}else {

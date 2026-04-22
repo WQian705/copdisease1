@@ -35,7 +35,7 @@
 							<el-upload
 								ref="uploadFile"
 								class="avatar-uploader"
-								action="http://localhost:9999/files/upload"
+								:action="uploadActionUrl"
 								:show-file-list="false"
 								:on-success="handleAvatarSuccess"
 							>
@@ -65,6 +65,7 @@ import type { UploadInstance, UploadProps } from 'element-plus';
 import { ElMessage } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import request from '/@/utils/request';
+import { uploadActionUrl } from '/@/utils/serviceUrl';
 
 const emit = defineEmits(['refresh']);
 

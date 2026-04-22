@@ -173,7 +173,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 						name: 'cameraPredict',
 						component: () => import('/@/views/cameraPredict/index.vue'),
 						meta: {
-							title: '摄像检测',
+							title: '摄像头检测',
 							isLink: '',
 							isHide: false,
 							isKeepAlive: true,
@@ -218,7 +218,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 						name: 'cameraRecord',
 						component: () => import('/@/views/cameraRecord/index.vue'),
 						meta: {
-							title: '摄像识别记录',
+							title: '摄像头识别记录',
 							isLink: '',
 							isHide: false,
 							isKeepAlive: true,
@@ -358,11 +358,27 @@ export const staticRoutes: Array<RouteRecordRaw> = [
 		},
 	},
 	{
+		path: '/imgShow',
+		name: 'imgShow',
+		component: () => import('/@/views/imgRecord/show.vue'),
+		meta: {
+			title: '图片记录详情',
+		},
+	},
+	{
 		path: '/videoShow',
 		name: 'videoShow',
 		component: () => import('/@/views/videoRecord/show.vue'),
 		meta: {
-			title: '记录查看',
+			title: '视频记录详情',
+		},
+	},
+	{
+		path: '/cameraShow',
+		name: 'cameraShow',
+		component: () => import('/@/views/videoRecord/show.vue'),
+		meta: {
+			title: '摄像头记录详情',
 		},
 	},
 	/**

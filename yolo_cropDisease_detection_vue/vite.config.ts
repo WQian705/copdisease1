@@ -29,15 +29,13 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
 			hmr: true,
 			proxy: {
 				'/api': {
-					//设置拦截器  拦截器格式   斜杠+拦截器名字，名字可以自己定
-					target: 'http://localhost:9999/', //代理的目标地址
+					target: env.VITE_FILE_SERVER_URL || 'http://localhost:9999/',
 					ws: true,
 					changeOrigin: true,
 					rewrite: (path) => path.replace(/^\/api/, ''),
 				},
 				'/flask': {
-					//设置拦截器  拦截器格式   斜杠+拦截器名字，名字可以自己定
-					target: 'http://localhost:5000/', //代理的目标地址
+					target: env.VITE_FLASK_SERVER_URL || 'http://localhost:5000/',
 					ws: true,
 					changeOrigin: true,
 					rewrite: (path) => path.replace(/^\/flask/, ''),

@@ -4,8 +4,8 @@
 			<section class="predict-hero">
 				<div>
 					<span class="hero-badge">图片检测</span>
-					<h2>上传作物图片并获得病害识别结果</h2>
-					<p>保留原有模型选择、置信度设置、识别请求与 AI 建议生成流程，只优化展示和交互体验。</p>
+					<h2>上传作物图片并获得病虫害识别结果</h2>
+					<p>保留模型选择、置信度设置、识别请求与 AI 建议生成流程，只优化展示和交互体验。</p>
 				</div>
 				<div class="hero-side">
 					<span>当前作物</span>
@@ -40,7 +40,7 @@
 						v-model="state.img"
 						ref="uploadFile"
 						class="upload-box"
-						action="http://localhost:9999/files/upload"
+						:action="uploadActionUrl"
 						:show-file-list="false"
 						:on-success="handleAvatarSuccessone"
 					>
@@ -119,6 +119,7 @@ import { useUserInfo } from '/@/stores/userInfo';
 import { storeToRefs } from 'pinia';
 import { formatDate } from '/@/utils/formatTime';
 import axios from 'axios';
+import { uploadActionUrl } from '/@/utils/serviceUrl';
 
 const imageUrl = ref('');
 const conf = ref('0');
@@ -129,7 +130,7 @@ const stores = useUserInfo();
 const { userInfos } = storeToRefs(stores);
 const predictedImageUrl = ref('');
 const state = reactive({
-	weight_items: [] as any,
+	weight_items: [] as Array<{ value: string; label: string }>,
 	kind_items: [
 		{ value: 'corn', label: '玉米' },
 		{ value: 'rice', label: '水稻' },
@@ -174,9 +175,9 @@ const handleAvatarSuccessone: UploadProps['onSuccess'] = (response, uploadFile) 
 
 const getData = () => {
 	request.get('/api/flask/file_names').then((res) => {
-		if (res.code == 0) {
-			res.data = JSON.parse(res.data);
-			state.weight_items = res.data.weight_items.filter((item) => item.value.includes(kind.value));
+		if (String(res.code) === '0') {
+			const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+			state.weight_items = (data.weight_items || []).filter((item: { value: string; label: string }) => item.value.includes(kind.value));
 		} else {
 			ElMessage.error(res.msg);
 		}
@@ -191,14 +192,14 @@ const upData = () => {
 	state.form.kind = kind.value;
 	state.form.startTime = formatDate(new Date(), 'YYYY-mm-dd HH:MM:SS');
 	request.post('/api/flask/predict', state.form).then((res) => {
-		if (res.code == 0) {
+		if (String(res.code) === '0') {
 			try {
-				res.data = JSON.parse(res.data);
+				res.data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
 				if (typeof res.data.label === 'string') {
 					res.data.label = JSON.parse(res.data.label);
 				}
 				if (Array.isArray(res.data.label)) {
-					state.predictionResult.label = res.data.label.map((item) =>
+					state.predictionResult.label = res.data.label.map((item: string) =>
 						item.replace(/\\u([\dA-Fa-f]{4})/g, (_, code) => String.fromCharCode(parseInt(code, 16)))
 					);
 				}
@@ -225,7 +226,6 @@ const getAISuggestion = async () => {
 	try {
 		const apiKey = 'sk-3rG1hl3sdDbbRoqEHr7utZpcbqbufy1miSD9XhLvVxJGAb4W';
 		const prompt = `作为一个专业的农作物病害专家，请对以下情况进行详细分析：
-
 1. 基本信息：
 - 作物类型：${state.kind_items.find((item) => item.value === kind.value)?.label || kind.value}
 - 检测到的病害：${state.predictionResult.label}
@@ -283,7 +283,7 @@ const formatLabelArray = (label: any) => {
 const formatConfidenceArray = (confidence: string) => {
 	if (!confidence) return ['0%'];
 	try {
-		let confidences = confidence;
+		let confidences: any = confidence;
 		if (typeof confidence === 'string') confidences = JSON.parse(confidence);
 		if (Array.isArray(confidences)) {
 			return confidences.map((conf) => `${parseFloat(String(conf).replace(/[\[\]"%]/g, '')).toFixed(2)}%`);
@@ -297,7 +297,8 @@ const formatConfidenceArray = (confidence: string) => {
 
 const formatTime = (time: string) => {
 	if (!time) return '0 秒';
-	return `${parseFloat(time).toFixed(3)} 秒`;
+	const value = parseFloat(String(time).replace(/[^\d.]/g, '')) || 0;
+	return `${value.toFixed(3)} 秒`;
 };
 
 onMounted(() => {
@@ -307,8 +308,18 @@ onMounted(() => {
 
 <style scoped lang="scss">
 .predict-page {
+	position: relative;
+	left: auto;
+	top: auto;
+	height: auto;
+	min-height: 100%;
+	overflow: visible;
+
 	.predict-panel {
 		padding: 18px;
+		height: auto;
+		min-height: 100%;
+		overflow: visible;
 		background: rgba(255, 255, 255, 0.88);
 	}
 }

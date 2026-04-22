@@ -3,7 +3,7 @@
 		<div class="page-panel layout-padding-auto layout-padding-view">
 			<section class="page-hero">
 				<div>
-					<span class="page-badge">图片检测记录</span>
+					<span class="page-badge">图片识别记录</span>
 					<h2>识别留痕与结果回看</h2>
 					<p>支持按作物类型筛选，保留原有展开详情、删除和分页逻辑。</p>
 				</div>
@@ -17,10 +17,7 @@
 				<div class="toolbar-grid">
 					<el-input v-model="state.tableData.param.search1" size="default" placeholder="请输入农作物类型" />
 					<div class="toolbar-actions">
-						<el-button size="default" type="primary" @click="getTableData()">
-							<el-icon><ele-Search /></el-icon>
-							查询
-						</el-button>
+						<el-button size="default" type="primary" @click="getTableData">查询</el-button>
 					</div>
 				</div>
 			</section>
@@ -30,10 +27,24 @@
 					<el-table-column type="expand">
 						<template #default="props">
 							<div class="expand-card">
+								<div class="detail-summary">
+									<div class="summary-item">
+										<span>识别条目</span>
+										<strong>{{ props.row.family.length }}</strong>
+									</div>
+									<div class="summary-item">
+										<span>最高置信度</span>
+										<strong>{{ props.row.bestConfidenceText }}</strong>
+									</div>
+									<div class="summary-item">
+										<span>主要识别结果</span>
+										<strong>{{ props.row.primaryLabel }}</strong>
+									</div>
+								</div>
 								<p class="expand-title">详细识别结果</p>
 								<el-table :data="props.row.family">
 									<el-table-column prop="label" label="识别结果" align="center" />
-									<el-table-column prop="confidence" label="置信度" show-overflow-tooltip align="center" />
+									<el-table-column prop="confidenceText" label="置信度" show-overflow-tooltip align="center" />
 									<el-table-column prop="startTime" label="识别时间" align="center" />
 								</el-table>
 							</div>
@@ -50,14 +61,15 @@
 							<img :src="scope.row.outImg" class="record-image" />
 						</template>
 					</el-table-column>
-					<el-table-column prop="cropType" label="农作物种类" show-overflow-tooltip align="center"></el-table-column>
-					<el-table-column prop="weight" label="识别权重" show-overflow-tooltip align="center"></el-table-column>
-					<el-table-column prop="conf" label="最小阈值" show-overflow-tooltip align="center"></el-table-column>
-					<el-table-column prop="allTime" label="总用时" show-overflow-tooltip align="center"></el-table-column>
+					<el-table-column prop="cropType" label="农作物种类" show-overflow-tooltip align="center" />
+					<el-table-column prop="weight" label="识别权重" show-overflow-tooltip align="center" />
+					<el-table-column prop="conf" label="最小阈值" show-overflow-tooltip align="center" />
+					<el-table-column prop="allTime" label="总用时" show-overflow-tooltip align="center" />
 					<el-table-column prop="startTime" label="识别时间" width="180" align="center" />
-					<el-table-column prop="username" label="识别用户" show-overflow-tooltip align="center"></el-table-column>
-					<el-table-column label="操作" width="90" align="center">
+					<el-table-column prop="username" label="识别用户" show-overflow-tooltip align="center" />
+					<el-table-column label="操作" width="160" align="center">
 						<template #default="scope">
+							<el-button size="small" text type="primary" @click="show(scope.row)">查看详情</el-button>
 							<el-button size="small" text type="danger" @click="onRowDel(scope.row)">删除</el-button>
 						</template>
 					</el-table-column>
@@ -69,8 +81,8 @@
 					:pager-count="5"
 					:page-sizes="[10, 20, 30]"
 					v-model:current-page="state.tableData.param.pageNum"
-					background
 					v-model:page-size="state.tableData.param.pageSize"
+					background
 					layout="total, sizes, prev, pager, next, jumper"
 					:total="state.tableData.total"
 				/>
@@ -79,34 +91,98 @@
 	</div>
 </template>
 
-<script setup lang="ts" name="systemRole">
-import { reactive, onMounted } from 'vue';
-import { ElMessageBox, ElMessage } from 'element-plus';
+<script setup lang="ts" name="imgRecord">
+import { onMounted, reactive } from 'vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import request from '/@/utils/request';
 import { useUserInfo } from '/@/stores/userInfo';
 import { storeToRefs } from 'pinia';
+import { router } from '/@/router/index';
+import { resolveFileUrl } from '/@/utils/serviceUrl';
 
 const stores = useUserInfo();
 const { userInfos } = storeToRefs(stores);
 
 const state = reactive({
 	tableData: {
-		data: [] as any,
+		data: [] as any[],
 		total: 0,
 		loading: false,
 		param: {
 			search: '',
 			search1: '',
 			search2: '',
+			search3: '',
 			pageNum: 1,
 			pageSize: 10,
 		},
 	},
 });
 
+const isSuccessCode = (code: string | number) => String(code) === '0';
+
+const normalizeArray = (value: string | string[]) => {
+	if (Array.isArray(value)) return value;
+	if (!value) return [];
+	try {
+		return JSON.parse(value);
+	} catch {
+		return [value];
+	}
+};
+
+const normalizeConfidenceText = (value: string | number) => {
+	const numericValue = Number(String(value).replace(/[%\[\]"]/g, ''));
+	if (Number.isFinite(numericValue)) {
+		return `${numericValue.toFixed(2)}%`;
+	}
+	return String(value || '-');
+};
+
+const transformData = (originalData: any) => {
+	const confidences = normalizeArray(originalData.confidence);
+	const labels = normalizeArray(originalData.label);
+	const family = labels.map((label: string, index: number) => ({
+		label,
+		confidence: confidences[index] || '-',
+		confidenceText: normalizeConfidenceText(confidences[index] || '-'),
+		startTime: originalData.startTime,
+	}));
+	const sortedFamily = [...family].sort((a, b) => {
+		const aValue = Number(String(a.confidence).replace(/[%\[\]"]/g, ''));
+		const bValue = Number(String(b.confidence).replace(/[%\[\]"]/g, ''));
+		return (Number.isFinite(bValue) ? bValue : -1) - (Number.isFinite(aValue) ? aValue : -1);
+	});
+	const primaryResult = sortedFamily[0];
+
+	return {
+		id: originalData.id,
+		inputImg: resolveFileUrl(originalData.inputImg),
+		outImg: resolveFileUrl(originalData.outImg),
+		cropType: originalData.kind || '-',
+		weight: originalData.weight || '-',
+		allTime: originalData.allTime || '-',
+		conf: originalData.conf || '-',
+		startTime: originalData.startTime || '-',
+		username: originalData.username || '-',
+		family,
+		primaryLabel: primaryResult?.label || '暂无结果',
+		bestConfidenceText: primaryResult?.confidenceText || '-',
+	};
+};
+
+const show = (row: any) => {
+	window.open(
+		router.resolve({
+			name: 'imgShow',
+			query: { id: String(row.id), mode: 'img' },
+		}).href
+	);
+};
+
 const getTableData = () => {
 	state.tableData.loading = true;
-	if (userInfos.value.userName != 'admin') {
+	if (userInfos.value.userName !== 'admin') {
 		state.tableData.param.search = userInfos.value.userName;
 	}
 	request
@@ -114,63 +190,37 @@ const getTableData = () => {
 			params: state.tableData.param,
 		})
 		.then((res) => {
-			if (res.code == 0) {
-				state.tableData.data = [];
-				setTimeout(() => {
-					state.tableData.loading = false;
-				}, 500);
-				for (let i = 0; i < res.data.records.length; i++) {
-					const confidences = JSON.parse(res.data.records[i].confidence);
-					const labels = JSON.parse(res.data.records[i].label);
-					const transformedData = transformData(res.data.records[i], confidences, labels);
-					transformedData['num'] = i + 1;
-					state.tableData.data[i] = transformedData;
-				}
-				state.tableData.total = res.data.total;
-			} else {
-				ElMessage({ type: 'error', message: res.msg });
+			state.tableData.loading = false;
+			if (!isSuccessCode(res.code)) {
+				ElMessage.error(res.msg);
+				return;
 			}
+			state.tableData.data = (res.data.records || []).map((item: any, index: number) => ({
+				...transformData(item),
+				num: index + 1,
+			}));
+			state.tableData.total = res.data.total || 0;
+		})
+		.catch(() => {
+			state.tableData.loading = false;
 		});
 };
 
-const transformData = (originalData, confidences, labels) => {
-	const family = labels.map((label, index) => ({
-		label: label,
-		confidence: confidences[index],
-		startTime: originalData.startTime,
-	}));
-
-	return {
-		id: originalData.id,
-		inputImg: originalData.inputImg,
-		outImg: originalData.outImg,
-		cropType: originalData.kind || '-',
-		weight: originalData.weight,
-		allTime: originalData.allTime,
-		conf: originalData.conf,
-		startTime: originalData.startTime,
-		username: originalData.username,
-		family: family,
-	};
-};
-
 const onRowDel = (row: any) => {
-	ElMessageBox.confirm(`此操作将永久删除该信息，是否继续？`, '提示', {
+	ElMessageBox.confirm('此操作将永久删除该记录，是否继续？', '提示', {
 		confirmButtonText: '确认',
 		cancelButtonText: '取消',
 		type: 'warning',
 	})
 		.then(() => {
 			request.delete('/api/imgRecords/' + row.id).then((res) => {
-				if (res.code == 0) {
-					ElMessage({ type: 'success', message: '删除成功' });
+				if (isSuccessCode(res.code)) {
+					ElMessage.success('删除成功');
+					getTableData();
 				} else {
-					ElMessage({ type: 'error', message: res.msg });
+					ElMessage.error(res.msg);
 				}
 			});
-			setTimeout(() => {
-				getTableData();
-			}, 500);
 		})
 		.catch(() => {});
 };
@@ -283,6 +333,34 @@ onMounted(() => {
 	background: linear-gradient(180deg, #f8fbf9 0%, #f2f7f5 100%);
 }
 
+.detail-summary {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 12px;
+	margin-bottom: 14px;
+}
+
+.summary-item {
+	padding: 12px 14px;
+	border-radius: 14px;
+	background: rgba(255, 255, 255, 0.72);
+	box-shadow: inset 0 0 0 1px rgba(106, 128, 115, 0.12);
+}
+
+.summary-item span {
+	display: block;
+	color: #6b7c8d;
+	font-size: 13px;
+}
+
+.summary-item strong {
+	display: block;
+	margin-top: 8px;
+	color: #23465f;
+	font-size: 18px;
+	word-break: break-word;
+}
+
 .expand-title {
 	margin: 0 0 12px;
 	font-size: 16px;
@@ -319,13 +397,16 @@ onMounted(() => {
 }
 
 @media (max-width: 992px) {
-	.page-hero,
+	.page-hero {
+		flex-direction: column;
+	}
+
 	.toolbar-grid {
 		grid-template-columns: 1fr;
 	}
 
-	.page-hero {
-		flex-direction: column;
+	.detail-summary {
+		grid-template-columns: 1fr;
 	}
 
 	.toolbar-actions,
