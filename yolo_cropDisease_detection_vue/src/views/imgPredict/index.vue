@@ -119,7 +119,7 @@ import { useUserInfo } from '/@/stores/userInfo';
 import { storeToRefs } from 'pinia';
 import { formatDate } from '/@/utils/formatTime';
 import axios from 'axios';
-import { uploadActionUrl } from '/@/utils/serviceUrl';
+import { resolveFileUrl, uploadActionUrl } from '/@/utils/serviceUrl';
 
 const imageUrl = ref('');
 const conf = ref('0');
@@ -205,7 +205,7 @@ const upData = () => {
 				}
 				state.predictionResult.confidence = res.data.confidence;
 				state.predictionResult.allTime = res.data.allTime;
-				if (res.data.outImg) predictedImageUrl.value = res.data.outImg;
+				if (res.data.outImg) predictedImageUrl.value = resolveFileUrl(res.data.outImg);
 			} catch (error) {
 				console.error('解析 JSON 时出错', error);
 			}

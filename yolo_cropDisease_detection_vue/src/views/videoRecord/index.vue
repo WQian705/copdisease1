@@ -106,6 +106,7 @@ import request from '/@/utils/request';
 import { useUserInfo } from '/@/stores/userInfo';
 import { storeToRefs } from 'pinia';
 import { router } from '/@/router/index';
+import { resolveFileUrl } from '/@/utils/serviceUrl';
 
 type FrameResult = {
 	frameIndex?: number;
@@ -170,6 +171,8 @@ const getTableData = () => {
 			state.tableData.data = (res.data.records || []).map((item: any, index: number) => ({
 				...item,
 				num: index + 1,
+				inputVideo: resolveFileUrl(item.inputVideo),
+				outVideo: resolveFileUrl(item.outVideo),
 				parsedFrameResults: parseFrameResults(item.frameResults),
 			}));
 			state.tableData.total = res.data.total || 0;

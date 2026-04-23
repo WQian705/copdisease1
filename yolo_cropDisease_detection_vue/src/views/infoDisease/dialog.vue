@@ -65,7 +65,7 @@ import type { UploadInstance, UploadProps } from 'element-plus';
 import { ElMessage } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import request from '/@/utils/request';
-import { uploadActionUrl } from '/@/utils/serviceUrl';
+import { resolveFileUrl, uploadActionUrl } from '/@/utils/serviceUrl';
 
 const emit = defineEmits(['refresh']);
 
@@ -108,7 +108,7 @@ const openDialog = (type: string, row: any) => {
 		state.form = { ...row };
 		state.dialog.title = '修改病害信息';
 		state.dialog.submitTxt = '保存修改';
-		imageUrl.value = state.form.images;
+		imageUrl.value = resolveFileUrl(state.form.images);
 	} else {
 		state.dialog.title = '新增病害信息';
 		state.dialog.submitTxt = '确认新增';

@@ -84,6 +84,7 @@
 import { defineAsyncComponent, reactive, onMounted, ref } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import request from '/@/utils/request';
+import { resolveFileUrl } from '/@/utils/serviceUrl';
 
 const DiseaseDialog = defineAsyncComponent(() => import('./dialog.vue'));
 const DiseaseDetail = defineAsyncComponent(() => import('./detail.vue'));
@@ -119,6 +120,7 @@ const getTableData = () => {
 				}, 500);
 				for (let i = 0; i < res.data.records.length; i++) {
 					state.tableData.data[i] = res.data.records[i];
+					state.tableData.data[i].image = resolveFileUrl(state.tableData.data[i].image);
 					state.tableData.data[i]['num'] = i + 1;
 				}
 				state.tableData.total = res.data.total;

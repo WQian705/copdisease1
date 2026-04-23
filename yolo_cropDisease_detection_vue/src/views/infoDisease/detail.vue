@@ -64,6 +64,7 @@
 
 <script setup lang="ts" name="diseaseDetail">
 import { reactive } from 'vue';
+import { resolveFileUrl } from '/@/utils/serviceUrl';
 
 const state = reactive({
 	isShowDialog: false,
@@ -71,7 +72,7 @@ const state = reactive({
 });
 
 const openDialog = (row: any) => {
-	state.disease = row;
+	state.disease = { ...row, image: resolveFileUrl(row?.image) };
 	state.isShowDialog = true;
 };
 

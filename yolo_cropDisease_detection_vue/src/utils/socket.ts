@@ -7,7 +7,6 @@ export class SocketService {
 	constructor() {
 		this.socket = io(socketBaseUrl, {
 			path: socketPath,
-			transports: ['polling'],
 			reconnection: true,
 		});
 	}

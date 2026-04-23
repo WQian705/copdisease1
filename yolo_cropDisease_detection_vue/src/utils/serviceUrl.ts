@@ -18,8 +18,28 @@ export const buildFlaskStreamUrl = (path: string, query?: string) => {
 
 export const resolveFileUrl = (url?: string) => {
 	if (!url) return '';
-	if (/^https?:\/\//i.test(url)) return url;
+	if (/^https?:\/\//i.test(url)) {
+		try {
+			const parsedUrl = new URL(url);
+			const isLocalBackendHost = ['localhost', '127.0.0.1'].includes(parsedUrl.hostname);
+			if (isLocalBackendHost) {
+				const normalizedPath = trimLeadingSlash(parsedUrl.pathname);
+				if (normalizedPath.startsWith('api/files/')) {
+					return `${appBaseUrl}/${normalizedPath}`;
+				}
+				if (normalizedPath.startsWith('files/')) {
+					return `${appBaseUrl}/api/${normalizedPath}`;
+				}
+			}
+		} catch {
+			return url;
+		}
+		return url;
+	}
 	const normalizedPath = trimLeadingSlash(url);
+	if (normalizedPath.startsWith('api/files/')) {
+		return `${appBaseUrl}/${normalizedPath}`;
+	}
 	if (normalizedPath.startsWith('files/')) {
 		return `${appBaseUrl}/api/${normalizedPath}`;
 	}

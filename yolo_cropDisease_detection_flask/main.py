@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 import json
 import os
 import subprocess
@@ -15,10 +18,13 @@ from predict import predictImg
 
 class VideoProcessingApp:
     def __init__(self, host='0.0.0.0', port=5000):
+        self.host = os.getenv('FLASK_HOST', host)
+        self.port = int(os.getenv('FLASK_PORT', port))
+        self.spring_api_base_url = self.normalize_base_url(
+            os.getenv('SPRING_API_BASE_URL', 'http://127.0.0.1:9999')
+        )
         self.app = Flask(__name__)
-        self.socketio = SocketIO(self.app, cors_allowed_origins='*')
-        self.host = host
-        self.port = port
+        self.socketio = SocketIO(self.app, cors_allowed_origins='*', async_mode='eventlet')
         self.setup_routes()
         self.data = {}
         self.paths = {
@@ -35,6 +41,10 @@ class VideoProcessingApp:
             'C:/Windows/Fonts/msyhbd.ttc',
             'C:/Windows/Fonts/simhei.ttf',
             'C:/Windows/Fonts/simsun.ttc',
+            '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+            '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc',
+            '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+            '/usr/share/fonts/truetype/arphic/ukai.ttc',
         ]
         for font_path in font_candidates:
             if os.path.exists(font_path):
@@ -147,6 +157,7 @@ class VideoProcessingApp:
                     processed_frame = self.draw_frame_overlay(processed_frame, frame_result)
                     frame_results.append(frame_result)
                     self.socketio.emit('frame_result', {'data': {**frame_result, 'source': 'video'}})
+                    self.socketio.sleep(0)
                     video_writer.write(processed_frame)
                     _, jpeg = cv2.imencode('.jpg', processed_frame)
                     frame_index += 1
@@ -159,7 +170,7 @@ class VideoProcessingApp:
                 uploaded_url = self.upload(self.paths['output'])
                 self.data['outVideo'] = uploaded_url
                 self.data['frameResults'] = json.dumps(frame_results, ensure_ascii=False)
-                self.save_data(json.dumps(self.data), 'http://localhost:9999/videoRecords')
+                self.save_data(json.dumps(self.data), f'{self.spring_api_base_url}/videoRecords')
                 self.cleanup_files([self.paths['download'], self.paths['output'], self.paths['video_output']])
 
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -201,6 +212,7 @@ class VideoProcessingApp:
                     processed_frame = self.draw_frame_overlay(processed_frame, frame_result)
                     frame_results.append(frame_result)
                     self.socketio.emit('frame_result', {'data': {**frame_result, 'source': 'camera'}})
+                    self.socketio.sleep(0)
                     if self.recording and video_writer:
                         video_writer.write(processed_frame)
                     _, jpeg = cv2.imencode('.jpg', processed_frame)
@@ -214,7 +226,7 @@ class VideoProcessingApp:
                 uploaded_url = self.upload(self.paths['output'])
                 self.data['outVideo'] = uploaded_url
                 self.data['frameResults'] = json.dumps(frame_results, ensure_ascii=False)
-                self.save_data(json.dumps(self.data), 'http://localhost:9999/cameraRecords')
+                self.save_data(json.dumps(self.data), f'{self.spring_api_base_url}/cameraRecords')
                 self.cleanup_files([self.paths['download'], self.paths['output'], self.paths['camera_output']])
 
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -368,7 +380,7 @@ class VideoProcessingApp:
             return []
 
     def upload(self, out_path):
-        upload_url = 'http://localhost:9999/files/upload'
+        upload_url = f'{self.spring_api_base_url}/files/upload'
         try:
             with open(out_path, 'rb') as file:
                 files = {'file': (os.path.basename(out_path), file)}
@@ -403,6 +415,10 @@ class VideoProcessingApp:
         if video_writer is not None:
             video_writer.release()
         cv2.destroyAllWindows()
+
+    @staticmethod
+    def normalize_base_url(url):
+        return url.rstrip('/')
 
 
 if __name__ == '__main__':
