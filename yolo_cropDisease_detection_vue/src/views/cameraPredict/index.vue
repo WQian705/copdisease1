@@ -5,7 +5,7 @@
 				<div>
 					<span class="hero-badge">摄像头检测</span>
 					<h2>连接摄像头后实时查看病虫害识别结果</h2>
-					<p>在实时画面旁同步显示当前帧时间戳、检测结果和逐帧识别记录，结束录制后自动保存到识别记录中。</p>
+					<p>浏览器通过 getUserMedia 采集本地摄像头画面，并将视频帧持续发送到云端进行识别，结束后自动保存识别记录。</p>
 				</div>
 				<div class="hero-side">
 					<span>当前作物</span>
@@ -41,7 +41,7 @@
 				<div class="workspace-head">
 					<div>
 						<h3>摄像头识别画面</h3>
-						<p>左侧显示实时检测流，右侧跟踪当前帧病虫害结果与时间戳，并记录最近识别日志。</p>
+						<p>左侧显示云端返回的识别结果帧，右侧同步展示当前帧时间戳、识别结果和逐帧日志。</p>
 					</div>
 					<div class="live-state">
 						<span>当前时间戳</span>
@@ -51,9 +51,10 @@
 
 				<div class="workspace-grid">
 					<div class="video-stage">
-						<img v-if="state.cameraIsShow" class="video-stream" :src="state.videoPath" />
+						<img v-if="state.processedFramePath" class="video-stream" :src="state.processedFramePath" />
+						<video v-else-if="state.previewReady" ref="previewVideoRef" class="video-stream" autoplay muted playsinline></video>
 						<div v-else class="video-empty">
-							<span>选择作物和模型后开始识别，这里会显示摄像头实时检测画面。</span>
+							<span>点击开始识别后，浏览器将采集本地摄像头并发送到云端识别。</span>
 						</div>
 					</div>
 
@@ -101,14 +102,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import request from '/@/utils/request';
 import { useUserInfo } from '/@/stores/userInfo';
 import { storeToRefs } from 'pinia';
 import { SocketService } from '/@/utils/socket';
 import { formatDate } from '/@/utils/formatTime';
-import { buildFlaskStreamUrl } from '/@/utils/serviceUrl';
+import { flaskProxyBaseUrl } from '/@/utils/serviceUrl';
 
 type FrameResult = {
 	frameIndex?: number;
@@ -131,6 +132,15 @@ const conf = ref<number>(0);
 const kind = ref('');
 const weight = ref('');
 
+const socketService = new SocketService();
+const frameResults = ref<FrameResult[]>([]);
+const currentFrame = ref<FrameResult>({});
+const previewVideoRef = ref<HTMLVideoElement>();
+const captureCanvas = document.createElement('canvas');
+const FRAME_INTERVAL_MS = 350;
+let mediaStream: MediaStream | null = null;
+let frameTimer: number | null = null;
+
 const state = reactive({
 	weightItems: [] as OptionItem[],
 	kindItems: [
@@ -144,11 +154,15 @@ const state = reactive({
 		{ value: 'grape', label: '葡萄' },
 		{ value: 'strawberry', label: '草莓' },
 	] as OptionItem[],
-	videoPath: '',
 	typeText: '正在保存',
 	percentage: 0,
 	isShow: false,
 	cameraIsShow: false,
+	previewReady: false,
+	processedFramePath: '',
+	sessionId: '',
+	isUploadingFrame: false,
+	isStopping: false,
 	form: {
 		username: '',
 		weight: '',
@@ -157,10 +171,6 @@ const state = reactive({
 		startTime: '',
 	},
 });
-
-const socketService = new SocketService();
-const frameResults = ref<FrameResult[]>([]);
-const currentFrame = ref<FrameResult>({});
 
 const selectedKindLabel = computed(() => {
 	return state.kindItems.find((item) => item.value === kind.value)?.label || '未选择';
@@ -177,6 +187,26 @@ const resetLiveState = () => {
 	currentFrame.value = {};
 	state.percentage = 0;
 	state.isShow = false;
+	state.processedFramePath = '';
+};
+
+const stopFrameLoop = () => {
+	if (frameTimer) {
+		window.clearTimeout(frameTimer);
+		frameTimer = null;
+	}
+};
+
+const stopMediaTracks = () => {
+	if (mediaStream) {
+		mediaStream.getTracks().forEach((track) => track.stop());
+		mediaStream = null;
+	}
+	if (previewVideoRef.value) {
+		previewVideoRef.value.srcObject = null;
+	}
+	state.previewReady = false;
+	state.cameraIsShow = false;
 };
 
 const getData = () => {
@@ -198,7 +228,82 @@ const handleKindChange = () => {
 	getData();
 };
 
-const start = () => {
+const waitForVideoReady = async () => {
+	const video = previewVideoRef.value;
+	if (!video) return;
+	if (video.readyState >= 2) return;
+	await new Promise<void>((resolve) => {
+		video.onloadedmetadata = () => resolve();
+	});
+};
+
+const captureFrameBlob = () =>
+	new Promise<Blob>((resolve, reject) => {
+		const video = previewVideoRef.value;
+		if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+			reject(new Error('摄像头画面尚未准备完成'));
+			return;
+		}
+		captureCanvas.width = video.videoWidth;
+		captureCanvas.height = video.videoHeight;
+		const ctx = captureCanvas.getContext('2d');
+		if (!ctx) {
+			reject(new Error('无法获取摄像头帧'));
+			return;
+		}
+		ctx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
+		captureCanvas.toBlob((blob) => {
+			if (!blob) {
+				reject(new Error('摄像头帧编码失败'));
+				return;
+			}
+			resolve(blob);
+		}, 'image/jpeg', 0.9);
+	});
+
+const pushFrameResult = (frameResult: FrameResult) => {
+	currentFrame.value = frameResult;
+	frameResults.value = [frameResult, ...frameResults.value].slice(0, 300);
+};
+
+const scheduleNextFrame = () => {
+	if (!state.cameraIsShow || !state.sessionId || state.isStopping) return;
+	frameTimer = window.setTimeout(() => {
+		void uploadCurrentFrame();
+	}, FRAME_INTERVAL_MS);
+};
+
+const uploadCurrentFrame = async () => {
+	if (!state.cameraIsShow || !state.sessionId || state.isStopping || state.isUploadingFrame) return;
+	state.isUploadingFrame = true;
+	try {
+		const blob = await captureFrameBlob();
+		const formData = new FormData();
+		formData.append('sessionId', state.sessionId);
+		formData.append('frame', blob, `camera-${Date.now()}.jpg`);
+		const response = await fetch(`${flaskProxyBaseUrl}/cameraSession/frame`, {
+			method: 'POST',
+			body: formData,
+		});
+		const payload = await response.json();
+		if (String(payload.code) !== '0') {
+			throw new Error(payload.message || '摄像头识别失败');
+		}
+		state.processedFramePath = payload.data?.image || '';
+		if (payload.data?.frameResult) {
+			pushFrameResult(payload.data.frameResult);
+		}
+	} catch (error: any) {
+		ElMessage.error(error?.message || '摄像头逐帧上传失败');
+		await stop();
+		return;
+	} finally {
+		state.isUploadingFrame = false;
+	}
+	scheduleNextFrame();
+};
+
+const start = async () => {
 	if (!kind.value) {
 		ElMessage.warning('请先选择作物种类');
 		return;
@@ -207,24 +312,80 @@ const start = () => {
 		ElMessage.warning('请先选择识别模型');
 		return;
 	}
+	if (!navigator.mediaDevices?.getUserMedia) {
+		ElMessage.error('当前浏览器不支持 getUserMedia');
+		return;
+	}
+	await stop();
 	resetLiveState();
 	state.form.weight = weight.value;
 	state.form.kind = kind.value;
 	state.form.conf = conf.value / 100;
 	state.form.username = userInfos.value.userName;
 	state.form.startTime = formatDate(new Date(), 'YYYY-mm-dd HH:MM:SS');
-	const queryParams = new URLSearchParams(state.form as unknown as Record<string, string>).toString();
-	state.cameraIsShow = true;
-	state.videoPath = buildFlaskStreamUrl('predictCamera', queryParams);
+	try {
+		state.previewReady = true;
+		await nextTick();
+		mediaStream = await navigator.mediaDevices.getUserMedia({
+			video: { width: 640, height: 480, facingMode: 'environment' },
+			audio: false,
+		});
+		if (previewVideoRef.value) {
+			previewVideoRef.value.srcObject = mediaStream;
+			await previewVideoRef.value.play();
+		}
+		await waitForVideoReady();
+		state.previewReady = true;
+		const response = await fetch(`${flaskProxyBaseUrl}/cameraSession/start`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				...state.form,
+				width: 640,
+				height: 480,
+				fps: Math.round(1000 / FRAME_INTERVAL_MS),
+			}),
+		});
+		const payload = await response.json();
+		if (String(payload.code) !== '0') {
+			throw new Error(payload.message || '摄像头会话创建失败');
+		}
+		state.sessionId = payload.data?.sessionId || '';
+		state.cameraIsShow = true;
+		ElMessage.success('本地摄像头已连接，正在发送到云端识别');
+		scheduleNextFrame();
+	} catch (error: any) {
+		stopFrameLoop();
+		stopMediaTracks();
+		state.sessionId = '';
+		ElMessage.error(error?.message || '摄像头启动失败');
+	}
 };
 
-const stop = () => {
-	request.get('/flask/stopCamera').then((res) => {
-		if (!isSuccessCode(res.code)) {
-			ElMessage.error(res.msg);
+const stop = async () => {
+	stopFrameLoop();
+	const sessionId = state.sessionId;
+	state.isStopping = true;
+	stopMediaTracks();
+	if (!sessionId) {
+		state.isStopping = false;
+		return;
+	}
+	try {
+		const response = await fetch(`${flaskProxyBaseUrl}/cameraSession/stop`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ sessionId }),
+		});
+		const payload = await response.json();
+		if (String(payload.code) !== '0') {
+			ElMessage.error(payload.message || '摄像头识别结束失败');
 		}
-	});
-	state.cameraIsShow = false;
+	} finally {
+		state.sessionId = '';
+		state.isStopping = false;
+		state.isUploadingFrame = false;
+	}
 };
 
 socketService.on('message', (data: string) => {
@@ -248,17 +409,13 @@ socketService.on('progress', (data: string | number) => {
 	}
 });
 
-socketService.on('frame_result', (data: FrameResult) => {
-	if (data?.source !== 'camera') return;
-	currentFrame.value = data;
-	frameResults.value = [data, ...frameResults.value].slice(0, 300);
-});
-
 onMounted(() => {
 	getData();
 });
 
 onUnmounted(() => {
+	stopFrameLoop();
+	stopMediaTracks();
 	socketService.disconnect();
 });
 </script>

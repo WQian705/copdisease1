@@ -1,9 +1,12 @@
 import eventlet
 eventlet.monkey_patch()
 
+import base64
 import json
 import os
 import subprocess
+import time
+import uuid
 
 import cv2
 import numpy as np
@@ -27,6 +30,7 @@ class VideoProcessingApp:
         self.socketio = SocketIO(self.app, cors_allowed_origins='*', async_mode='eventlet')
         self.setup_routes()
         self.data = {}
+        self.camera_sessions = {}
         self.paths = {
             'download': './runs/video/download.mp4',
             'output': './runs/video/output.mp4',
@@ -58,7 +62,10 @@ class VideoProcessingApp:
         self.app.add_url_rule('/file_names', 'file_names', self.file_names, methods=['GET'])
         self.app.add_url_rule('/predictImg', 'predictImg', self.predictImg, methods=['POST'])
         self.app.add_url_rule('/predictVideo', 'predictVideo', self.predictVideo)
-        self.app.add_url_rule('/predictCamera', 'predictCamera', self.predictCamera)
+        self.app.add_url_rule('/predictCamera', 'predictCamera', self.predictCamera, methods=['GET'])
+        self.app.add_url_rule('/cameraSession/start', 'startCameraSession', self.startCameraSession, methods=['POST'])
+        self.app.add_url_rule('/cameraSession/frame', 'processCameraFrame', self.processCameraFrame, methods=['POST'])
+        self.app.add_url_rule('/cameraSession/stop', 'stopCameraSession', self.stopCameraSession, methods=['POST'])
         self.app.add_url_rule('/stopCamera', 'stopCamera', self.stopCamera, methods=['GET'])
 
         @self.socketio.on('connect')
@@ -176,60 +183,123 @@ class VideoProcessingApp:
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
     def predictCamera(self):
-        self.data.clear()
-        self.data.update(
+        return json.dumps(
             {
-                'username': request.args.get('username'),
-                'weight': request.args.get('weight'),
-                'kind': request.args.get('kind'),
-                'conf': request.args.get('conf'),
-                'startTime': request.args.get('startTime'),
-                'frameResults': '[]',
-            }
+                'status': 400,
+                'code': 1,
+                'message': 'predictCamera endpoint has been replaced by browser getUserMedia upload flow',
+            },
+            ensure_ascii=False,
         )
+
+    def startCameraSession(self):
+        payload = request.get_json(silent=True) or {}
+        required_fields = ['username', 'weight', 'kind', 'conf', 'startTime']
+        missing_fields = [field for field in required_fields if not payload.get(field)]
+        if missing_fields:
+            return json.dumps({'status': 400, 'code': 1, 'message': f'missing fields: {",".join(missing_fields)}'})
+
+        session_id = uuid.uuid4().hex
+        camera_output_path, converted_output_path = self.build_camera_output_paths(session_id)
+        os.makedirs(os.path.dirname(camera_output_path), exist_ok=True)
+        fps = self.parse_fps(payload.get('fps'))
+        width = int(payload.get('width') or 640)
+        height = int(payload.get('height') or 480)
+        video_writer = cv2.VideoWriter(
+            camera_output_path,
+            cv2.VideoWriter_fourcc(*'XVID'),
+            fps,
+            (width, height),
+        )
+
+        self.camera_sessions[session_id] = {
+            'id': session_id,
+            'data': {
+                'username': payload['username'],
+                'weight': payload['weight'],
+                'kind': payload['kind'],
+                'conf': str(payload['conf']),
+                'startTime': payload['startTime'],
+                'frameResults': '[]',
+            },
+            'model': YOLO(f'./weights/{payload["weight"]}'),
+            'fps': fps,
+            'frame_index': 0,
+            'frame_results': [],
+            'video_writer': video_writer,
+            'camera_output_path': camera_output_path,
+            'converted_output_path': converted_output_path,
+            'started_at': time.perf_counter(),
+            'is_active': True,
+        }
         self.socketio.emit('message', {'data': 'camera_loading'})
-        model = YOLO(f'./weights/{self.data["weight"]}')
-        cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        return json.dumps({'status': 200, 'code': 0, 'message': 'ok', 'data': {'sessionId': session_id}}, ensure_ascii=False)
 
-        fps = 20
-        frame_index = 0
-        frame_results = []
-        video_writer = cv2.VideoWriter(self.paths['camera_output'], cv2.VideoWriter_fourcc(*'XVID'), fps, (640, 480))
-        self.recording = True
+    def processCameraFrame(self):
+        session_id = request.form.get('sessionId') or request.args.get('sessionId')
+        session = self.camera_sessions.get(session_id)
+        if not session or not session.get('is_active'):
+            return json.dumps({'status': 404, 'code': 1, 'message': 'camera session not found'}, ensure_ascii=False)
 
-        def generate():
-            nonlocal frame_index
-            try:
-                while self.recording:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    results = model.predict(source=frame, imgsz=640, conf=float(self.data['conf']), show=False)
-                    processed_frame = results[0].plot()
-                    frame_result = self.build_frame_result(results[0], frame_index, fps)
-                    processed_frame = self.draw_frame_overlay(processed_frame, frame_result)
-                    frame_results.append(frame_result)
-                    self.socketio.emit('frame_result', {'data': {**frame_result, 'source': 'camera'}})
-                    self.socketio.sleep(0)
-                    if self.recording and video_writer:
-                        video_writer.write(processed_frame)
-                    _, jpeg = cv2.imencode('.jpg', processed_frame)
-                    frame_index += 1
-                    yield b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n'
-            finally:
-                self.cleanup_resources(cap, video_writer)
-                self.socketio.emit('message', {'data': 'camera_processing_finished'})
-                for progress in self.convert_avi_to_mp4(self.paths['camera_output']):
-                    self.socketio.emit('progress', {'data': progress})
-                uploaded_url = self.upload(self.paths['output'])
-                self.data['outVideo'] = uploaded_url
-                self.data['frameResults'] = json.dumps(frame_results, ensure_ascii=False)
-                self.save_data(json.dumps(self.data), f'{self.spring_api_base_url}/cameraRecords')
-                self.cleanup_files([self.paths['download'], self.paths['output'], self.paths['camera_output']])
+        file = request.files.get('frame')
+        if file is None:
+            return json.dumps({'status': 400, 'code': 1, 'message': 'frame file is required'}, ensure_ascii=False)
 
-        return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+        frame_buffer = np.frombuffer(file.read(), dtype=np.uint8)
+        frame = cv2.imdecode(frame_buffer, cv2.IMREAD_COLOR)
+        if frame is None:
+            return json.dumps({'status': 400, 'code': 1, 'message': 'invalid frame payload'}, ensure_ascii=False)
+
+        frame = cv2.resize(frame, (640, 480))
+        results = session['model'].predict(source=frame, imgsz=640, conf=float(session['data']['conf']), show=False)
+        processed_frame = results[0].plot()
+        timestamp_seconds = round(time.perf_counter() - session['started_at'], 3)
+        frame_result = self.build_frame_result(results[0], session['frame_index'], session['fps'], timestamp_seconds)
+        processed_frame = self.draw_frame_overlay(processed_frame, frame_result)
+        session['frame_results'].append(frame_result)
+        session['video_writer'].write(processed_frame)
+        session['frame_index'] += 1
+
+        self.socketio.emit('frame_result', {'data': {**frame_result, 'source': 'camera'}})
+        self.socketio.sleep(0)
+
+        success, jpeg = cv2.imencode('.jpg', processed_frame)
+        if not success:
+            return json.dumps({'status': 500, 'code': 1, 'message': 'frame encoding failed'}, ensure_ascii=False)
+        encoded_image = base64.b64encode(jpeg.tobytes()).decode('utf-8')
+        return json.dumps(
+            {
+                'status': 200,
+                'code': 0,
+                'message': 'ok',
+                'data': {
+                    'image': f'data:image/jpeg;base64,{encoded_image}',
+                    'frameResult': frame_result,
+                    'sessionId': session_id,
+                },
+            },
+            ensure_ascii=False,
+        )
+
+    def stopCameraSession(self):
+        payload = request.get_json(silent=True) or {}
+        session_id = payload.get('sessionId')
+        session = self.camera_sessions.get(session_id)
+        if not session:
+            return json.dumps({'status': 404, 'code': 1, 'message': 'camera session not found'}, ensure_ascii=False)
+
+        session['is_active'] = False
+        session['video_writer'].release()
+        self.socketio.emit('message', {'data': 'camera_processing_finished'})
+        for progress in self.convert_avi_to_mp4(session['camera_output_path'], session['converted_output_path']):
+            self.socketio.emit('progress', {'data': progress})
+        uploaded_url = self.upload(session['converted_output_path'])
+        session['data']['outVideo'] = uploaded_url
+        session['data']['frameResults'] = json.dumps(session['frame_results'], ensure_ascii=False)
+        self.save_data(json.dumps(session['data']), f'{self.spring_api_base_url}/cameraRecords')
+        self.cleanup_files([session['camera_output_path'], session['converted_output_path']])
+        self.camera_sessions.pop(session_id, None)
+        return json.dumps({'status': 200, 'code': 0, 'message': 'ok', 'data': {'outVideo': uploaded_url}}, ensure_ascii=False)
 
     def stopCamera(self):
         self.recording = False
@@ -246,7 +316,7 @@ class VideoProcessingApp:
         except requests.RequestException as exc:
             print(f'save_data_error: {str(exc)}')
 
-    def build_frame_result(self, result, frame_index, fps):
+    def build_frame_result(self, result, frame_index, fps, timestamp_seconds=None):
         boxes = result.boxes
         names = result.names
         detections = []
@@ -274,7 +344,7 @@ class VideoProcessingApp:
             {'label': label, 'confidence': confidence}
             for label, confidence in sorted(label_summary.items(), key=lambda item: item[1], reverse=True)
         ]
-        timestamp_seconds = round(frame_index / fps, 3) if fps else 0
+        timestamp_seconds = round(frame_index / fps, 3) if timestamp_seconds is None and fps else (timestamp_seconds or 0)
         return {
             'frameIndex': frame_index,
             'timestamp': self.format_timestamp(timestamp_seconds),
@@ -340,8 +410,9 @@ class VideoProcessingApp:
         parts = [f"{item['label']} {item['confidence'] * 100:.1f}%" for item in top_labels[:2]]
         return ' | '.join(parts)
 
-    def convert_avi_to_mp4(self, temp_output):
-        ffmpeg_command = f'ffmpeg -i {temp_output} -vcodec libx264 {self.paths["output"]} -y'
+    def convert_avi_to_mp4(self, temp_output, output_path=None):
+        target_output = output_path or self.paths['output']
+        ffmpeg_command = f'ffmpeg -i {temp_output} -vcodec libx264 {target_output} -y'
         process = subprocess.Popen(ffmpeg_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         total_duration = self.get_video_duration(temp_output)
 
@@ -419,6 +490,22 @@ class VideoProcessingApp:
     @staticmethod
     def normalize_base_url(url):
         return url.rstrip('/')
+
+    @staticmethod
+    def parse_fps(value):
+        try:
+            fps = float(value)
+        except (TypeError, ValueError):
+            fps = 8.0
+        return max(1.0, min(fps, 30.0))
+
+    @staticmethod
+    def build_camera_output_paths(session_id):
+        output_dir = './runs/video'
+        return (
+            os.path.join(output_dir, f'camera_{session_id}.avi'),
+            os.path.join(output_dir, f'camera_{session_id}.mp4'),
+        )
 
 
 if __name__ == '__main__':
